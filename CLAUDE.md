@@ -39,6 +39,8 @@ src/                          # React frontend
     HintsPanel.tsx            # Claude Code command hints reference
     SetupWizard.tsx           # First-run setup (Node.js/Claude Code detection)
     AutoUpdater.tsx           # In-app update UI
+    WhatsNewModal.tsx         # Post-update release notes popup
+  changelog.json              # Structured release notes data for What's New modal
   store/
     terminalStore.ts          # Terminal instances state (Map<id, {config, xterm}>)
     appStore.ts               # UI state (sidebar, grid, modals, settings)
