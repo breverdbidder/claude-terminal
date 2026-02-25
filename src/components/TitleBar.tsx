@@ -1,10 +1,17 @@
+import { useState, useEffect } from 'react';
 import { PanelLeft, Lightbulb, FileDiff, Settings, Minus, Square, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
 import { useAppStore } from '../store/appStore';
 
 export function TitleBar() {
   const { toggleSidebar, toggleHints, toggleChanges, openSettings, sidebarOpen, hintsOpen, changesOpen } = useAppStore();
   const appWindow = getCurrentWindow();
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    getVersion().then(setAppVersion);
+  }, []);
 
   return (
     <div className="h-8 bg-bg-secondary flex items-center justify-between px-2 border-b border-border drag-region">
@@ -18,7 +25,9 @@ export function TitleBar() {
           <PanelLeft size={16} />
         </button>
 
-        <span className="text-text-tertiary text-xs font-medium select-none">ClaudeTerminal</span>
+        <span className="text-text-tertiary text-xs font-medium select-none">
+          ClaudeTerminal{appVersion && <span className="text-text-tertiary/50 ml-1.5 text-[10px]">v{appVersion}</span>}
+        </span>
       </div>
 
       <div className="flex items-center gap-1 no-drag">

@@ -308,12 +308,17 @@ export function TerminalGrid() {
         </AnimatePresence>
       </div>
 
-      {/* Quick Tips */}
+      {/* Empty State */}
       {gridTerminalIds.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <Grid3X3 size={32} className="text-border mx-auto mb-3" />
-            <p className="text-text-tertiary text-[12px]">Click + to add terminals to the grid</p>
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06] flex items-center justify-center">
+              <Grid3X3 size={28} className="text-text-tertiary" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-text-secondary text-[13px] font-medium">No terminals in grid</p>
+              <p className="text-text-tertiary text-[12px]">Click any <Plus size={12} className="inline -mt-0.5" /> cell to add a terminal</p>
+            </div>
           </div>
         </div>
       )}

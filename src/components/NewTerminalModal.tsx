@@ -123,7 +123,9 @@ export function NewTerminalModal() {
 
     setIsCreating(true);
     try {
-      const label = `Terminal ${terminals.size + 1}`;
+      const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+      const baseName = selectedProfile?.name || 'Terminal';
+      const label = `${baseName} ${terminals.size + 1}`;
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
 
       await createTerminal(
