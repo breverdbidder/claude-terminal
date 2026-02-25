@@ -15,7 +15,7 @@ $ARGUMENTS — The new version number (e.g. `1.6.0`). If not provided, ask the u
 
 ## Step 2: Bump version in all files
 
-Update the version string in **all four** of these files (replace the old version with the new one):
+Update the version string in **all five** of these files (replace the old version with the new one):
 
 1. **`package.json`** — the `"version"` field
 2. **`src-tauri/Cargo.toml`** — the `version` field under `[package]`
@@ -24,8 +24,25 @@ Update the version string in **all four** of these files (replace the old versio
    - The version badge: `version-X.Y.Z-green`
    - The NSIS download link filename: `ClaudeTerminal_X.Y.Z_x64-setup.exe` (both the link text and the URL)
    - The MSI download link filename: `ClaudeTerminal_X.Y.Z_x64_en-US.msi` (both the link text and the URL)
+5. **`CLAUDE.md`** — the `Current version: **X.Y.Z**` line
 
 After editing, verify each file was updated correctly by reading the changed lines.
+
+## Step 2b: Add changelog entry
+
+Add a new entry at the **top** of the `src/changelog.json` array for this version. Ask the user for a summary of the features/changes to include. Each entry has this format:
+
+```json
+{
+  "version": "X.Y.Z",
+  "date": "YYYY-MM-DD",
+  "features": [
+    { "title": "Feature name", "description": "Optional description" }
+  ]
+}
+```
+
+Use today's date. The features list should be based on what the user tells you (or inferred from recent commits since the last release tag).
 
 ## Step 3: Update Cargo.lock
 
@@ -43,6 +60,8 @@ Stage **only** these files:
 - `src-tauri/Cargo.lock`
 - `src-tauri/tauri.conf.json`
 - `README.md`
+- `CLAUDE.md`
+- `src/changelog.json`
 
 Create a commit with the message (using the heredoc pattern):
 
