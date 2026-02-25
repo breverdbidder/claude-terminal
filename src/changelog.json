@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.11.0",
+    "date": "2026-02-25",
+    "features": [
+      { "title": "What's New Modal", "description": "See release notes after each update, including skipped versions" }
+    ]
+  },
+  {
     "version": "1.10.0",
     "date": "2026-02-25",
     "features": [
