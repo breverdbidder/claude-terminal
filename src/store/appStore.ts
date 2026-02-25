@@ -133,7 +133,7 @@ export const useAppStore = create<AppState>()(
       editingProfileId: null,
       newTerminalModalOpen: false,
       workspaceModalOpen: false,
-      defaultClaudeArgs: ['--dangerously-skip-permissions'],
+      defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
 

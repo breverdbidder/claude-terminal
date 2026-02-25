@@ -46,6 +46,20 @@ impl TerminalManager {
         }
     }
 
+    /// Characters that could enable shell injection when passed through `cmd /C`
+    const SHELL_METACHARACTERS: &'static [char] = &[
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+    ];
+
+    /// Environment variable names that must not be overridden by user profiles
+    const BLOCKED_ENV_VARS: &'static [&'static str] = &[
+        "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
+        "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+        "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
+        "ELECTRON_RUN_AS_NODE",
+        "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    ];
+
     pub fn create_terminal(
         &mut self,
         label: String,
@@ -57,6 +71,25 @@ impl TerminalManager {
         tx: mpsc::Sender<(String, Vec<u8>)>,
         log_file_path: Option<String>,
     ) -> Result<TerminalConfig, String> {
+        // Validate claude_args: reject any argument containing shell metacharacters
+        for arg in &claude_args {
+            if arg.contains(Self::SHELL_METACHARACTERS) {
+                return Err(format!(
+                    "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",
+                    arg
+                ));
+            }
+        }
+
+        // Filter out blocked environment variables
+        let safe_env_vars: HashMap<String, String> = env_vars
+            .into_iter()
+            .filter(|(key, _)| {
+                let upper = key.to_uppercase();
+                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
+            })
+            .collect();
+
         let pty_system = native_pty_system();
 
         let pty_pair = pty_system
@@ -104,8 +137,8 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        // Set environment variables
-        for (key, value) in &env_vars {
+        // Set environment variables (blocked keys already filtered out)
+        for (key, value) in &safe_env_vars {
             cmd.env(key, value);
         }
 
@@ -121,7 +154,7 @@ impl TerminalManager {
             profile_id: None,
             working_directory,
             claude_args,
-            env_vars,
+            env_vars: safe_env_vars,
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag,

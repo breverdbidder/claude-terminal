@@ -48,6 +48,8 @@ impl Database {
 
         conn.execute_batch(
             "
+            PRAGMA journal_mode=WAL;
+
             CREATE TABLE IF NOT EXISTS profiles (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

@@ -93,12 +93,22 @@ pub async fn create_terminal(
     Ok(config)
 }
 
+/// Maximum size for a single write to terminal (64 KB)
+const MAX_TERMINAL_WRITE_SIZE: usize = 65_536;
+
 #[command]
 pub async fn write_to_terminal(
     state: State<'_, AppState>,
     id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
+    if data.len() > MAX_TERMINAL_WRITE_SIZE {
+        return Err(format!(
+            "Write payload too large ({} bytes). Maximum is {} bytes.",
+            data.len(),
+            MAX_TERMINAL_WRITE_SIZE
+        ));
+    }
     let mut terminals = state.terminals.lock().await;
     terminals.write(&id, &data)
 }
@@ -364,6 +374,9 @@ pub async fn send_notification(title: String, body: String) -> Result<(), String
 
 #[command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only HTTP and HTTPS URLs are allowed".to_string());
+    }
     open::that(&url).map_err(|e| e.to_string())
 }
 
@@ -558,7 +571,7 @@ pub async fn read_log_file(path: String) -> Result<String, String> {
     if !canonical_path.starts_with(&canonical_logs) {
         return Err("Access denied: path is not under logs directory".to_string());
     }
-    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read log file: {}", e))
+    std::fs::read_to_string(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))
 }
 
 #[command]
@@ -567,9 +580,19 @@ pub async fn delete_session_history(
     id: i64,
     log_path: Option<String>,
 ) -> Result<(), String> {
-    // Delete log file if it exists
+    // Delete log file if it exists, but only if it's under the logs directory
     if let Some(ref path) = log_path {
-        let _ = std::fs::remove_file(path);
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
+            let canonical_logs = logs_dir.canonicalize().unwrap_or(logs_dir);
+            if canonical_path.starts_with(&canonical_logs) {
+                let _ = std::fs::remove_file(&canonical_path);
+            }
+        }
     }
     let db = state.db.lock().await;
     db.delete_session_history_entry(id)
