@@ -54,7 +54,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname) => {
     try {
-      console.log('Creating terminal with:', { label, workingDirectory, claudeArgs, envVars, colorTag, nickname });
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -65,8 +64,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nickname: nickname || null,
         },
       });
-      console.log('Terminal created:', config);
-
       set((state) => {
         const newTerminals = new Map(state.terminals);
         newTerminals.set(config.id, { config, xterm: null });

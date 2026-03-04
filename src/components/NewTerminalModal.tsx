@@ -115,7 +115,7 @@ export function NewTerminalModal() {
     }
 
     // Validate claude args don't contain shell metacharacters
-    const dangerousPattern = /[;&|`$(){}]/;
+    const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
     for (const arg of claudeArgs) {
       if (dangerousPattern.test(arg)) {
         setError(`Invalid character in argument: "${arg}". Remove shell metacharacters.`);

@@ -275,6 +275,42 @@ pub struct SystemStatus {
     pub claude_version: Option<String>,
 }
 
+/// Shells that are allowed when reading `$SHELL` on non-Windows platforms.
+const VALID_SHELLS: &[&str] = &[
+    "/bin/bash",
+    "/bin/sh",
+    "/bin/zsh",
+    "/bin/fish",
+    "/bin/dash",
+    "/usr/bin/bash",
+    "/usr/bin/sh",
+    "/usr/bin/zsh",
+    "/usr/bin/fish",
+    "/usr/bin/dash",
+    "/usr/local/bin/bash",
+    "/usr/local/bin/zsh",
+    "/usr/local/bin/fish",
+    "/opt/homebrew/bin/bash",
+    "/opt/homebrew/bin/zsh",
+    "/opt/homebrew/bin/fish",
+];
+
+/// Shell-escape a single argument by wrapping it in single quotes.
+/// Any embedded single quotes are escaped as `'\''`.
+fn shell_escape_arg(arg: &str) -> String {
+    let mut escaped = String::with_capacity(arg.len() + 2);
+    escaped.push('\'');
+    for ch in arg.chars() {
+        if ch == '\'' {
+            escaped.push_str("'\\''");
+        } else {
+            escaped.push(ch);
+        }
+    }
+    escaped.push('\'');
+    escaped
+}
+
 /// Creates a Command that works cross-platform.
 /// On Windows, wraps the command with `cmd /C` so that `.cmd`/`.bat` scripts
 /// (like `npm.cmd`, `claude.cmd`) are resolved correctly.
@@ -294,10 +330,16 @@ fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
         cmd
     } else {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        let mut full_cmd = program.to_string();
+        // Validate $SHELL against allowlist to prevent arbitrary binary execution
+        let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+            shell
+        } else {
+            "/bin/bash".to_string()
+        };
+        let mut full_cmd = shell_escape_arg(program);
         for arg in args {
             full_cmd.push(' ');
-            full_cmd.push_str(arg);
+            full_cmd.push_str(&shell_escape_arg(arg));
         }
         let mut cmd = std::process::Command::new(shell);
         cmd.arg("-lc").arg(&full_cmd);
@@ -570,9 +612,10 @@ pub async fn read_log_file(path: String) -> Result<String, String> {
     let canonical_path = std::path::Path::new(&path)
         .canonicalize()
         .map_err(|e| format!("Invalid path: {}", e))?;
+    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
     let canonical_logs = logs_dir
         .canonicalize()
-        .unwrap_or(logs_dir);
+        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
     if !canonical_path.starts_with(&canonical_logs) {
         return Err("Access denied: path is not under logs directory".to_string());
     }
@@ -592,10 +635,12 @@ pub async fn delete_session_history(
             .data_dir()
             .to_path_buf();
         let logs_dir = data_dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
         if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-            let canonical_logs = logs_dir.canonicalize().unwrap_or(logs_dir);
-            if canonical_path.starts_with(&canonical_logs) {
-                let _ = std::fs::remove_file(&canonical_path);
+            if let Ok(canonical_logs) = logs_dir.canonicalize() {
+                if canonical_path.starts_with(&canonical_logs) {
+                    let _ = std::fs::remove_file(&canonical_path);
+                }
             }
         }
     }

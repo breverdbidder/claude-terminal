@@ -46,9 +46,10 @@ impl TerminalManager {
         }
     }
 
-    /// Characters that could enable shell injection when passed through `cmd /C`
+    /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
     const SHELL_METACHARACTERS: &'static [char] = &[
         '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+        '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
 
     /// Environment variable names that must not be overridden by user profiles
@@ -116,18 +117,37 @@ impl TerminalManager {
 
         #[cfg(not(target_os = "windows"))]
         let mut cmd = {
+            /// Shells allowed for PTY spawning on non-Windows platforms.
+            const VALID_SHELLS: &[&str] = &[
+                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
+                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
+                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
+                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+            ];
+
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-            // Validate shell path exists to prevent execution of arbitrary binaries
-            if !std::path::Path::new(&shell).exists() {
-                return Err(format!("Shell not found: {}", shell));
-            }
-            let mut c = CommandBuilder::new(shell);
-            // Join claude + args into a single command string for -c.
-            // Safe because args are validated against shell metacharacters above.
+            // Validate $SHELL against allowlist
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+                shell
+            } else {
+                "/bin/bash".to_string()
+            };
+            let mut c = CommandBuilder::new(&shell);
+            // Build command string with shell-escaped args as defense-in-depth
+            // (args are already validated against metacharacters above)
             let mut full_cmd = "claude".to_string();
             for arg in &claude_args {
                 full_cmd.push(' ');
-                full_cmd.push_str(arg);
+                // Single-quote wrap each arg; escape embedded single quotes
+                full_cmd.push('\'');
+                for ch in arg.chars() {
+                    if ch == '\'' {
+                        full_cmd.push_str("'\\''");
+                    } else {
+                        full_cmd.push(ch);
+                    }
+                }
+                full_cmd.push('\'');
             }
             c.arg("-lc");
             c.arg(&full_cmd);
