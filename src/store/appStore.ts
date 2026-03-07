@@ -49,6 +49,9 @@ interface AppState {
   // Snippets (F5)
   snippetsModalOpen: boolean;
 
+  // Claude Config (F6)
+  claudeConfigOpen: boolean;
+
   // What's New
   whatsNewOpen: boolean;
   lastSeenVersion: string | null;
@@ -106,6 +109,10 @@ interface AppState {
   // Snippets actions (F5)
   openSnippetsModal: () => void;
   closeSnippetsModal: () => void;
+
+  // Claude Config actions (F6)
+  openClaudeConfig: () => void;
+  closeClaudeConfig: () => void;
 
   // What's New actions
   openWhatsNew: () => void;
@@ -182,6 +189,9 @@ export const useAppStore = create<AppState>()(
 
       // Snippets (F5)
       snippetsModalOpen: false,
+
+      // Claude Config (F6)
+      claudeConfigOpen: false,
 
       // What's New
       whatsNewOpen: false,
@@ -265,6 +275,10 @@ export const useAppStore = create<AppState>()(
       // Snippets actions (F5)
       openSnippetsModal: () => set({ snippetsModalOpen: true }),
       closeSnippetsModal: () => set({ snippetsModalOpen: false }),
+
+      // Claude Config actions (F6)
+      openClaudeConfig: () => set({ claudeConfigOpen: true }),
+      closeClaudeConfig: () => set({ claudeConfigOpen: false }),
 
       // What's New actions
       openWhatsNew: () => set({ whatsNewOpen: true }),

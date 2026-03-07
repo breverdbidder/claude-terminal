@@ -372,6 +372,7 @@ export function SettingsModal() {
                 ['Split View', `${mod}+\\`],
                 ['Snippets', `${mod}+Shift+S`],
                 ['Search Terminal', `${mod}+Shift+F`],
+                ['Claude Config', 'F6'],
               ].map(([label, shortcut]) => (
                 <div key={label} className="flex justify-between text-[12px]">
                   <span className="text-text-secondary">{label}</span>

@@ -671,6 +671,138 @@ pub async fn delete_snippet(state: State<'_, AppState>, id: String) -> Result<()
     db.delete_snippet(&id)
 }
 
+// Claude Global Configuration (~/.claude/)
+
+/// Returns the path to the user's ~/.claude directory
+fn get_claude_dir() -> Result<std::path::PathBuf, String> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+    } else {
+        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
+    };
+    Ok(std::path::Path::new(&home).join(".claude"))
+}
+
+/// Validates that a filename is safe (no path traversal)
+fn validate_filename(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Filename cannot be empty".to_string());
+    }
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains('\0') {
+        return Err("Invalid filename".to_string());
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn read_claude_settings() -> Result<String, String> {
+    let settings_path = get_claude_dir()?.join("settings.json");
+    if !settings_path.exists() {
+        return Ok("{}".to_string());
+    }
+    std::fs::read_to_string(&settings_path)
+        .map_err(|e| format!("Failed to read settings.json: {}", e))
+}
+
+#[command]
+pub async fn write_claude_settings(content: String) -> Result<(), String> {
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let claude_dir = get_claude_dir()?;
+    std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    std::fs::write(claude_dir.join("settings.json"), &content)
+        .map_err(|e| format!("Failed to write settings.json: {}", e))
+}
+
+#[command]
+pub async fn list_claude_agents() -> Result<Vec<String>, String> {
+    let agents_dir = get_claude_dir()?.join("agents");
+    if !agents_dir.exists() {
+        return Ok(vec![]);
+    }
+    let entries = std::fs::read_dir(&agents_dir).map_err(|e| e.to_string())?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+#[command]
+pub async fn read_claude_agent(name: String) -> Result<String, String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("agents").join(&name);
+    if !path.exists() {
+        return Err(format!("Agent file not found: {}", name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn write_claude_agent(name: String, content: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let agents_dir = get_claude_dir()?.join("agents");
+    std::fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
+    std::fs::write(agents_dir.join(&name), &content).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn delete_claude_agent(name: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("agents").join(&name);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn list_claude_commands() -> Result<Vec<String>, String> {
+    let commands_dir = get_claude_dir()?.join("commands");
+    if !commands_dir.exists() {
+        return Ok(vec![]);
+    }
+    let entries = std::fs::read_dir(&commands_dir).map_err(|e| e.to_string())?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+#[command]
+pub async fn read_claude_command(name: String) -> Result<String, String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("commands").join(&name);
+    if !path.exists() {
+        return Err(format!("Command file not found: {}", name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn write_claude_command(name: String, content: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let commands_dir = get_claude_dir()?.join("commands");
+    std::fs::create_dir_all(&commands_dir).map_err(|e| e.to_string())?;
+    std::fs::write(commands_dir.join(&name), &content).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn delete_claude_command(name: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("commands").join(&name);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // Agent Teams (multi-agent orchestration)
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

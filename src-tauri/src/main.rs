@@ -67,6 +67,16 @@ fn main() {
             commands::get_snippets,
             commands::delete_snippet,
             commands::get_active_teams,
+            commands::read_claude_settings,
+            commands::write_claude_settings,
+            commands::list_claude_agents,
+            commands::read_claude_agent,
+            commands::write_claude_agent,
+            commands::delete_claude_agent,
+            commands::list_claude_commands,
+            commands::read_claude_command,
+            commands::write_claude_command,
+            commands::delete_claude_command,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
