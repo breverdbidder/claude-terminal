@@ -97,6 +97,17 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleOrchestration();
       }
 
+      // Claude Config: F6
+      if (e.key === 'F6') {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (state.claudeConfigOpen) {
+          state.closeClaudeConfig();
+        } else {
+          state.openClaudeConfig();
+        }
+      }
+
       // Toggle Grid Mode: Ctrl+G
       if (ctrl && e.key === 'g') {
         e.preventDefault();

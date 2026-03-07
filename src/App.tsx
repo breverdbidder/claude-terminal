@@ -16,6 +16,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
+import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
@@ -76,7 +77,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -322,6 +323,7 @@ function App() {
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}
             {whatsNewOpen && <WhatsNewModal />}
+            {claudeConfigOpen && <ClaudeConfigModal />}
           </AnimatePresence>
           {commandPaletteOpen && <CommandPalette />}
         </>
