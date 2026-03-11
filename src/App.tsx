@@ -68,6 +68,7 @@ interface SystemStatus {
 }
 
 interface SavedTerminalConfig {
+  id: string;
   label: string;
   nickname: string | null;
   working_directory: string;
@@ -185,7 +186,20 @@ function App() {
   const handleRestore = async () => {
     if (!pendingRestoreConfigs) return;
     await invoke('clear_last_session');
-    for (const config of pendingRestoreConfigs) {
+
+    // Pre-fetch log content for all terminals in parallel
+    const logPromises = pendingRestoreConfigs.map(async (config) => {
+      if (!config.id) return null;
+      try {
+        return await invoke<string | null>('get_session_log', { terminalId: config.id });
+      } catch {
+        return null;
+      }
+    });
+    const logs = await Promise.all(logPromises);
+
+    for (let i = 0; i < pendingRestoreConfigs.length; i++) {
+      const config = pendingRestoreConfigs[i];
       try {
         await createTerminal(
           config.label,
@@ -193,7 +207,8 @@ function App() {
           config.claude_args,
           config.env_vars,
           config.color_tag ?? undefined,
-          config.nickname ?? undefined
+          config.nickname ?? undefined,
+          logs[i] ?? undefined
         );
       } catch (err) {
         console.error('Failed to restore terminal:', config.label, err);

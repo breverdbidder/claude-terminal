@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.15.0",
+    "date": "2026-03-11",
+    "features": [
+      { "title": "Session Output Restoration", "description": "Restored terminals now show previous session output with visual separators, so you can pick up right where you left off" }
+    ]
+  },
+  {
     "version": "1.14.0",
     "date": "2026-03-07",
     "features": [

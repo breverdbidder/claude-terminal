@@ -61,6 +61,7 @@ fn main() {
             commands::send_notification,
             commands::get_terminal_changes,
             commands::get_session_history,
+            commands::get_session_log,
             commands::read_log_file,
             commands::delete_session_history,
             commands::save_snippet,

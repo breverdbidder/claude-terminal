@@ -257,6 +257,19 @@ impl Database {
         entries.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     }
 
+    pub fn get_log_path_for_terminal(&self, terminal_id: &str) -> Result<Option<String>, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT log_path FROM session_history WHERE terminal_id = ?1 AND log_path IS NOT NULL ORDER BY started_at DESC LIMIT 1",
+            params![terminal_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(path) => Ok(Some(path)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
     pub fn delete_session_history_entry(&self, id: i64) -> Result<(), String> {
         self.conn.execute("DELETE FROM session_history WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;

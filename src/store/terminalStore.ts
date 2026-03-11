@@ -18,6 +18,7 @@ export interface TerminalConfig {
 interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
+  restoredOutput?: string;
 }
 
 interface TerminalState {
@@ -31,7 +32,8 @@ interface TerminalState {
     claudeArgs: string[],
     envVars: Record<string, string>,
     colorTag?: string,
-    nickname?: string
+    nickname?: string,
+    restoredOutput?: string
   ) => Promise<string>;
   closeTerminal: (id: string) => Promise<void>;
   setActiveTerminal: (id: string) => void;
@@ -52,7 +54,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
@@ -66,7 +68,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       });
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        newTerminals.set(config.id, { config, xterm: null });
+        newTerminals.set(config.id, { config, xterm: null, restoredOutput });
         return {
           terminals: newTerminals,
           activeTerminalId: config.id,
@@ -147,11 +149,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setXterm: (id, xterm) => {
+    const { terminals } = get();
+    const instance = terminals.get(id);
+
+    // Write restored session output before any live output
+    if (instance?.restoredOutput) {
+      const lines = instance.restoredOutput.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      xterm.write('\x1b[90m─── Previous session output ───\x1b[0m\r\n\r\n');
+      xterm.write(lines.replace(/\n/g, '\r\n'));
+      xterm.write('\r\n\r\n\x1b[90m─── Session restored ───\x1b[0m\r\n\r\n');
+    }
+
     set((state) => {
       const newTerminals = new Map(state.terminals);
-      const instance = newTerminals.get(id);
-      if (instance) {
-        instance.xterm = xterm;
+      const inst = newTerminals.get(id);
+      if (inst) {
+        inst.xterm = xterm;
+        delete inst.restoredOutput; // Free memory
       }
       return { terminals: newTerminals };
     });

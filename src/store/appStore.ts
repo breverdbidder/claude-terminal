@@ -121,6 +121,7 @@ interface AppState {
 }
 
 interface SavedTerminalConfig {
+  id: string;
   label: string;
   nickname: string | null;
   working_directory: string;

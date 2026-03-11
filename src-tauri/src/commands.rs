@@ -648,6 +648,59 @@ pub async fn delete_session_history(
     db.delete_session_history_entry(id)
 }
 
+/// Retrieve the log content for a terminal from a previous session.
+/// Looks up the most recent session_history entry for the given terminal_id,
+/// reads the log file, and returns its content (capped at 512 KB).
+#[command]
+pub async fn get_session_log(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Option<String>, String> {
+    let log_path = {
+        let db = state.db.lock().await;
+        db.get_log_path_for_terminal(&terminal_id)?
+    };
+
+    let path = match log_path {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    // Validate path is under the logs directory
+    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+        .ok_or("Failed to get project directories")?
+        .data_dir()
+        .to_path_buf();
+    let logs_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir)
+        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
+    let canonical_path = match std::path::Path::new(&path).canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Ok(None), // Log file may have been deleted
+    };
+    let canonical_logs = logs_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+    if !canonical_path.starts_with(&canonical_logs) {
+        return Ok(None);
+    }
+
+    // Read up to 512 KB
+    match std::fs::read(&canonical_path) {
+        Ok(bytes) => {
+            let max_bytes = 512 * 1024;
+            let truncated = if bytes.len() > max_bytes {
+                &bytes[bytes.len() - max_bytes..]
+            } else {
+                &bytes
+            };
+            Ok(Some(String::from_utf8_lossy(truncated).into_owned()))
+        }
+        Err(_) => Ok(None),
+    }
+}
+
 // Snippet commands
 
 #[command]
