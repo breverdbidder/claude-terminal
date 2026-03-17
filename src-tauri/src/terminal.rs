@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -30,9 +31,11 @@ pub enum TerminalStatus {
 
 pub struct Terminal {
     pub config: TerminalConfig,
-    #[allow(dead_code)]
+    /// Kept alive to maintain the PTY connection
     pub pty_pair: PtyPair,
     pub writer: Box<dyn Write + Send>,
+    /// Handle to the reader thread for cleanup on close
+    pub reader_handle: Option<JoinHandle<()>>,
 }
 
 pub struct TerminalManager {
@@ -189,7 +192,7 @@ impl TerminalManager {
 
         // Spawn reader thread
         let terminal_id = id.clone();
-        std::thread::spawn(move || {
+        let reader_handle = std::thread::spawn(move || {
             let mut buf = [0u8; 8192];
             let mut log_file = log_file_path.and_then(|path| {
                 std::fs::File::create(&path)
@@ -228,6 +231,7 @@ impl TerminalManager {
                 config: config.clone(),
                 pty_pair,
                 writer,
+                reader_handle: Some(reader_handle),
             },
         );
 
@@ -266,12 +270,22 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
-        self.terminals.remove(id);
+        if let Some(mut terminal) = self.terminals.remove(id) {
+            // Drop the writer first to signal EOF to the PTY, which unblocks the reader thread
+            drop(terminal.writer);
+            // Wait for the reader thread to finish (with a timeout to avoid blocking indefinitely)
+            if let Some(handle) = terminal.reader_handle.take() {
+                let _ = handle.join();
+            }
+        }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
-        self.terminals.clear();
+        let ids: Vec<String> = self.terminals.keys().cloned().collect();
+        for id in ids {
+            let _ = self.close(&id);
+        }
     }
 
     pub fn get_all_configs(&self) -> Vec<TerminalConfig> {
@@ -281,6 +295,15 @@ impl TerminalManager {
     pub fn update_label(&mut self, id: &str, label: String) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.label = label;
+            Ok(())
+        } else {
+            Err("Terminal not found".to_string())
+        }
+    }
+
+    pub fn update_status(&mut self, id: &str, status: TerminalStatus) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.status = status;
             Ok(())
         } else {
             Err("Terminal not found".to_string())

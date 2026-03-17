@@ -85,18 +85,17 @@ fn main() {
                 let terminals = app_state.terminals.clone();
                 let db = app_state.db.clone();
                 tauri::async_runtime::block_on(async {
-                    // Read configs before closing (immutable lock)
-                    let configs = {
-                        let manager = terminals.lock().await;
-                        manager.get_all_configs()
-                    };
+                    // Acquire single lock for atomic config-read + close
+                    let mut manager = terminals.lock().await;
+                    let configs = manager.get_all_configs();
                     // Save session to DB
                     {
                         let db = db.lock().await;
-                        let _ = db.save_last_session(&configs);
+                        if let Err(e) = db.save_last_session(&configs) {
+                            eprintln!("Failed to save last session on exit: {}", e);
+                        }
                     }
-                    // Now close all terminals
-                    let mut manager = terminals.lock().await;
+                    // Close all terminals (joins reader threads)
                     manager.close_all();
                 });
             }

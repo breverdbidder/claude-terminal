@@ -54,16 +54,19 @@ pub async fn create_terminal(
     // Insert session history entry
     {
         let db = state.db.lock().await;
-        let _ = db.insert_session_history(
+        if let Err(e) = db.insert_session_history(
             &config.id,
             &config.label,
             &config.created_at.to_rfc3339(),
             Some(&log_path),
-        );
+        ) {
+            eprintln!("Failed to insert session history: {}", e);
+        }
     }
 
     let terminal_id = config.id.clone();
     let db_arc = state.db.clone();
+    let terminals_arc = state.terminals.clone();
 
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -77,10 +80,16 @@ pub async fn create_terminal(
             }
         }
 
-        // Terminal process exited — update session history and notify frontend
+        // Terminal process exited — update status, session history, and notify frontend
+        {
+            let mut manager = terminals_arc.lock().await;
+            let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+        }
         {
             let db = db_arc.lock().await;
-            let _ = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339());
+            if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
+                eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
+            }
         }
 
         if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({

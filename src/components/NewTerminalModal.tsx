@@ -63,7 +63,7 @@ export function NewTerminalModal() {
       setClaudeArgs(defaultClaudeArgs);
       setEnvVars({});
     }
-  }, [selectedProfileId, profiles]);
+  }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
 
   const loadProfiles = async () => {
     try {

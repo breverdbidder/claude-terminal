@@ -112,7 +112,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
 
     terminal.onData((data) => {
-      writeToTerminal(terminalId, data);
+      writeToTerminal(terminalId, data).catch((err) => {
+        console.error(`Failed to write to terminal ${terminalId}:`, err);
+      });
     });
 
     const resizeObserver = new ResizeObserver(() => {

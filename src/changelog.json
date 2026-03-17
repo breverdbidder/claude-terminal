@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.16.0",
+    "date": "2026-03-17",
+    "features": [
+      { "title": "Fixed thread/resource leak", "description": "Reader threads are now properly tracked and joined on terminal close" },
+      { "title": "Fixed terminal status tracking", "description": "Terminal status now correctly updates to Stopped when process exits" },
+      { "title": "Fixed silent error suppression", "description": "Database errors are now logged instead of silently discarded" },
+      { "title": "Fixed shutdown race condition", "description": "Session save and terminal cleanup now happen atomically" },
+      { "title": "Fixed unmounted component callbacks", "description": "Prevented state updates on unmounted React components" },
+      { "title": "Added error handling to ProfileModal", "description": "Save/delete operations now show errors in the UI" },
+      { "title": "Fixed missing React effect dependencies", "description": "What's New modal and profile form now properly react to changes" }
+    ]
+  },
+  {
     "version": "1.15.0",
     "date": "2026-03-11",
     "features": [

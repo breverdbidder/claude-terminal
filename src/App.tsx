@@ -117,7 +117,7 @@ function App() {
     };
 
     checkWhatsNew();
-  }, [showSetup]);
+  }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
 
   useEffect(() => {
     const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
