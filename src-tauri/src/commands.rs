@@ -81,9 +81,14 @@ pub async fn create_terminal(
         }
 
         // Terminal process exited — update status, session history, and notify frontend
+        // Note: the terminal may have already been removed by close_terminal(), so ignore errors
         {
-            let mut manager = terminals_arc.lock().await;
-            let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            if let Ok(mut manager) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                terminals_arc.lock(),
+            ).await {
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
         }
         {
             let db = db_arc.lock().await;

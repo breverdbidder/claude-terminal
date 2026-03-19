@@ -270,22 +270,20 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
-        if let Some(mut terminal) = self.terminals.remove(id) {
-            // Drop the writer first to signal EOF to the PTY, which unblocks the reader thread
-            drop(terminal.writer);
-            // Wait for the reader thread to finish (with a timeout to avoid blocking indefinitely)
-            if let Some(handle) = terminal.reader_handle.take() {
-                let _ = handle.join();
-            }
+        if let Some(terminal) = self.terminals.remove(id) {
+            // Dropping the terminal drops the writer and PTY pair, which signals EOF
+            // to the reader thread. The reader thread will exit on its next read attempt
+            // and clean up asynchronously. We do NOT join the reader thread here because
+            // on Windows, PTY reads can block indefinitely even after the writer is dropped,
+            // which would deadlock the mutex and freeze the entire application.
+            drop(terminal);
         }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
-        let ids: Vec<String> = self.terminals.keys().cloned().collect();
-        for id in ids {
-            let _ = self.close(&id);
-        }
+        // Clear all terminals at once — reader threads clean up asynchronously
+        self.terminals.clear();
     }
 
     pub fn get_all_configs(&self) -> Vec<TerminalConfig> {

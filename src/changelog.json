@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.16.1",
+    "date": "2026-03-19",
+    "features": [
+      { "title": "Fixed application freezing and crashing", "description": "Resolved a deadlock caused by synchronous thread joins on terminal close that blocked the entire UI on Windows" },
+      { "title": "Fixed exit handler deadlock", "description": "App shutdown no longer hangs when closing terminals with active PTY readers" },
+      { "title": "Improved mutex safety", "description": "Added timeout protection for lock acquisition in terminal output processing" }
+    ]
+  },
+  {
     "version": "1.16.0",
     "date": "2026-03-17",
     "features": [

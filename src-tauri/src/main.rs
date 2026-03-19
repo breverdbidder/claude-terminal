@@ -85,18 +85,22 @@ fn main() {
                 let terminals = app_state.terminals.clone();
                 let db = app_state.db.clone();
                 tauri::async_runtime::block_on(async {
-                    // Acquire single lock for atomic config-read + close
-                    let mut manager = terminals.lock().await;
-                    let configs = manager.get_all_configs();
-                    // Save session to DB
+                    // Read configs and save session (short lock)
+                    let configs = {
+                        let manager = terminals.lock().await;
+                        manager.get_all_configs()
+                    };
                     {
                         let db = db.lock().await;
                         if let Err(e) = db.save_last_session(&configs) {
                             eprintln!("Failed to save last session on exit: {}", e);
                         }
                     }
-                    // Close all terminals (joins reader threads)
-                    manager.close_all();
+                    // Close all terminals (drops PTY resources, reader threads clean up async)
+                    {
+                        let mut manager = terminals.lock().await;
+                        manager.close_all();
+                    }
                 });
             }
         })
