@@ -28,20 +28,26 @@ Activate this skill when:
 
 ## Commit Conventions
 
-Follow these commit message conventions based on 63 analyzed commits.
+Follow these commit message conventions based on 83 analyzed commits.
 
 ### Commit Style: Free-form Messages
 
 ### Prefixes Used
 
-- `fix`
+- `feat`
 
 ### Message Guidelines
 
-- Average message length: ~44 characters
+- Average message length: ~49 characters
 - Keep first line concise and descriptive
 - Use imperative mood ("Add feature" not "Added feature")
 
+
+*Commit message example*
+
+```text
+feat: add claude-terminal ECC bundle (.claude/commands/add-or-enhance-feature.md)
+```
 
 *Commit message example*
 
@@ -58,37 +64,31 @@ Fix: Use correct Rust toolchain action in release workflow
 *Commit message example*
 
 ```text
-Add 8 advanced Claude Code features
+Release v1.17.1
 ```
 
 *Commit message example*
 
 ```text
-Release v1.16.0
+Merge remote-tracking branch 'origin/feature/advanced-claude-features'
 ```
 
 *Commit message example*
 
 ```text
-Release v1.15.0
+Merge pull request #8 from talayash/ecc-tools/claude-terminal-1774384938639
 ```
 
 *Commit message example*
 
 ```text
-Release v1.14.0
+Release v1.17.0
 ```
 
 *Commit message example*
 
 ```text
-Merge pull request #6 from talayash/feature/claude-config-manager
-```
-
-*Commit message example*
-
-```text
-Replace README screenshots with animated GIF slideshow
+Merge pull request #7 from talayash/feature/advanced-claude-features
 ```
 
 ## Architecture
@@ -176,7 +176,7 @@ These workflows were detected from analyzing commit patterns.
 
 Standard feature implementation workflow
 
-**Frequency**: ~13 times per month
+**Frequency**: ~16 times per month
 
 **Steps**:
 1. Add feature implementation
@@ -184,152 +184,112 @@ Standard feature implementation workflow
 3. Update documentation
 
 **Files typically involved**:
+- `src/*`
 - `src/components/*`
 - `src/hooks/*`
-- `src/store/*`
 
 **Example commit sequence**:
 ```
-Enable createUpdaterArtifacts for auto-update .sig generation
-Update signing public key with password-protected keypair
-Fix hardcoded version strings and add shortcuts to Settings
+Add File Changes panel for per-terminal git status
+Release v1.8.0
+Release v1.8.1
 ```
 
 ### Release Version Bump
 
-Publishes a new release version, updating version numbers, changelog, and documentation.
+Prepares and publishes a new release version of the project, updating version numbers, changelogs, and relevant configuration files.
 
 **Frequency**: ~4 times per month
 
 **Steps**:
-1. Update version in package.json and/or Cargo.toml
-2. Update changelog.json with new version entry
-3. Update README.md and CLAUDE.md with new version and features
-4. Update src-tauri/tauri.conf.json with new version and/or signing keys
-5. Commit and tag the release
+1. Update CLAUDE.md with new version and/or release notes
+2. Update README.md if necessary
+3. Update package.json version
+4. Update src-tauri/Cargo.lock and src-tauri/Cargo.toml for Rust dependencies
+5. Update src-tauri/tauri.conf.json for Tauri config
+6. Update src/changelog.json with new entry
 
 **Files typically involved**:
+- `CLAUDE.md`
+- `README.md`
 - `package.json`
-- `src-tauri/Cargo.toml`
 - `src-tauri/Cargo.lock`
+- `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 - `src/changelog.json`
-- `README.md`
-- `CLAUDE.md`
 
 **Example commit sequence**:
 ```
-Update version in package.json and/or Cargo.toml
-Update changelog.json with new version entry
-Update README.md and CLAUDE.md with new version and features
-Update src-tauri/tauri.conf.json with new version and/or signing keys
-Commit and tag the release
+Update CLAUDE.md with new version and/or release notes
+Update README.md if necessary
+Update package.json version
+Update src-tauri/Cargo.lock and src-tauri/Cargo.toml for Rust dependencies
+Update src-tauri/tauri.conf.json for Tauri config
+Update src/changelog.json with new entry
 ```
 
-### Add Or Enhance Feature
+### Feature Development Backend Frontend
 
-Implements a new feature or enhances an existing one, touching backend (Rust IPC), frontend components, and state stores.
+Implements a new feature that requires both backend (Rust/Tauri) and frontend (React/TS) changes, including new components, hooks, and store updates.
 
 **Frequency**: ~3 times per month
 
 **Steps**:
-1. Add or update Rust IPC command(s) in src-tauri/src/commands.rs and possibly other backend files
-2. Add or update frontend React components in src/components/
-3. Update or create hooks in src/hooks/ if needed
-4. Update or create state stores in src/store/
-5. Wire up new UI in src/App.tsx or relevant container
-6. Update keyboard shortcuts if needed in src/hooks/useKeyboardShortcuts.ts
-7. Update documentation if needed
+1. Modify or add Rust backend files (src-tauri/src/commands.rs, database.rs, main.rs, etc.)
+2. Update or add frontend React components in src/components/
+3. Update or add hooks in src/hooks/
+4. Update or add store files in src/store/
+5. Update src/App.tsx to wire up new UI or logic
+6. Update configuration files if needed (e.g., src-tauri/tauri.conf.json)
 
 **Files typically involved**:
 - `src-tauri/src/commands.rs`
-- `src-tauri/src/main.rs`
 - `src-tauri/src/database.rs`
-- `src-tauri/src/terminal.rs`
-- `src/components/*.tsx`
-- `src/hooks/*.ts`
-- `src/store/*.ts`
-- `src/App.tsx`
-
-**Example commit sequence**:
-```
-Add or update Rust IPC command(s) in src-tauri/src/commands.rs and possibly other backend files
-Add or update frontend React components in src/components/
-Update or create hooks in src/hooks/ if needed
-Update or create state stores in src/store/
-Wire up new UI in src/App.tsx or relevant container
-Update keyboard shortcuts if needed in src/hooks/useKeyboardShortcuts.ts
-Update documentation if needed
-```
-
-### Fix Bug Or Improve Ui
-
-Fixes a bug or makes UI/UX improvements, often in a single or few frontend files.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Identify and fix bug in relevant component or hook
-2. Update related UI/UX as needed
-3. Test the fix
-4. Update documentation if needed
-
-**Files typically involved**:
-- `src/components/*.tsx`
-- `src/hooks/*.ts`
-- `src/store/*.ts`
-
-**Example commit sequence**:
-```
-Identify and fix bug in relevant component or hook
-Update related UI/UX as needed
-Test the fix
-Update documentation if needed
-```
-
-### Update Signing Keys Or Updater Config
-
-Updates signing keys or updater configuration for release security and auto-update functionality.
-
-**Frequency**: ~2 times per month
-
-**Steps**:
-1. Regenerate or update signing keypair
-2. Update public key in src-tauri/tauri.conf.json
-3. Commit and push changes
-
-**Files typically involved**:
+- `src-tauri/src/main.rs`
 - `src-tauri/tauri.conf.json`
+- `src/App.tsx`
+- `src/components/*.tsx`
+- `src/hooks/*.ts`
+- `src/store/*.ts`
 
 **Example commit sequence**:
 ```
-Regenerate or update signing keypair
-Update public key in src-tauri/tauri.conf.json
-Commit and push changes
+Modify or add Rust backend files (src-tauri/src/commands.rs, database.rs, main.rs, etc.)
+Update or add frontend React components in src/components/
+Update or add hooks in src/hooks/
+Update or add store files in src/store/
+Update src/App.tsx to wire up new UI or logic
+Update configuration files if needed (e.g., src-tauri/tauri.conf.json)
 ```
 
-### Add Or Update Documentation And Screenshots
+### Merge Feature Branch
 
-Updates documentation files and/or adds new screenshots or demo media.
+Merges a feature branch into the main branch, typically bringing in multiple new or updated files for a cohesive feature or bundle.
 
 **Frequency**: ~2 times per month
 
 **Steps**:
-1. Update README.md and/or CLAUDE.md
-2. Add or update images or GIFs in docs/
-3. Commit and push changes
+1. Merge branch and resolve conflicts if any
+2. Bring in multiple new or updated files (skills, commands, config, agents, etc.)
+3. Update documentation and config files as needed
 
 **Files typically involved**:
-- `README.md`
-- `CLAUDE.md`
-- `docs/*.png`
-- `docs/*.gif`
+- `.agents/skills/claude-terminal/SKILL.md`
+- `.agents/skills/claude-terminal/agents/openai.yaml`
+- `.claude/commands/*.md`
+- `.claude/ecc-tools.json`
+- `.claude/homunculus/instincts/inherited/*.yaml`
+- `.claude/identity.json`
+- `.claude/skills/claude-terminal/SKILL.md`
+- `.codex/AGENTS.md`
+- `.codex/agents/*.toml`
+- `.codex/config.toml`
 
 **Example commit sequence**:
 ```
-Update README.md and/or CLAUDE.md
-Add or update images or GIFs in docs/
-Commit and push changes
+Merge branch and resolve conflicts if any
+Bring in multiple new or updated files (skills, commands, config, agents, etc.)
+Update documentation and config files as needed
 ```
 
 
