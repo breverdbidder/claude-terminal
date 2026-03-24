@@ -17,6 +17,7 @@ interface AppState {
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
   restoreSession: boolean;
+  telemetryEnabled: boolean;
 
   // Changes panel
   changesRefreshTrigger: number;
@@ -52,6 +53,12 @@ interface AppState {
   // Claude Config (F6)
   claudeConfigOpen: boolean;
 
+  // Session Timeline (F7)
+  sessionTimelineOpen: boolean;
+
+  // Memory Editor (F8)
+  memoryEditorOpen: boolean;
+
   // What's New
   whatsNewOpen: boolean;
   lastSeenVersion: string | null;
@@ -71,6 +78,7 @@ interface AppState {
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
+  setTelemetryEnabled: (enabled: boolean) => void;
 
   // Grid actions
   toggleGridMode: () => void;
@@ -113,6 +121,15 @@ interface AppState {
   // Claude Config actions (F6)
   openClaudeConfig: () => void;
   closeClaudeConfig: () => void;
+
+  // Session Timeline actions (F7)
+  openSessionTimeline: () => void;
+  closeSessionTimeline: () => void;
+  toggleSessionTimeline: () => void;
+
+  // Memory Editor actions (F8)
+  openMemoryEditor: () => void;
+  closeMemoryEditor: () => void;
 
   // What's New actions
   openWhatsNew: () => void;
@@ -159,6 +176,7 @@ export const useAppStore = create<AppState>()(
       defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
+      telemetryEnabled: true,
 
       // Changes panel
       changesRefreshTrigger: 0,
@@ -194,6 +212,12 @@ export const useAppStore = create<AppState>()(
       // Claude Config (F6)
       claudeConfigOpen: false,
 
+      // Session Timeline (F7)
+      sessionTimelineOpen: false,
+
+      // Memory Editor (F8)
+      memoryEditorOpen: false,
+
       // What's New
       whatsNewOpen: false,
       lastSeenVersion: null,
@@ -213,6 +237,7 @@ export const useAppStore = create<AppState>()(
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
+      setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
 
       // Grid actions
       toggleGridMode: () => set((state) => ({ gridMode: !state.gridMode })),
@@ -281,6 +306,15 @@ export const useAppStore = create<AppState>()(
       openClaudeConfig: () => set({ claudeConfigOpen: true }),
       closeClaudeConfig: () => set({ claudeConfigOpen: false }),
 
+      // Session Timeline actions (F7)
+      openSessionTimeline: () => set({ sessionTimelineOpen: true }),
+      closeSessionTimeline: () => set({ sessionTimelineOpen: false }),
+      toggleSessionTimeline: () => set((state) => ({ sessionTimelineOpen: !state.sessionTimelineOpen })),
+
+      // Memory Editor actions (F8)
+      openMemoryEditor: () => set({ memoryEditorOpen: true }),
+      closeMemoryEditor: () => set({ memoryEditorOpen: false }),
+
       // What's New actions
       openWhatsNew: () => set({ whatsNewOpen: true }),
       closeWhatsNew: () => set({ whatsNewOpen: false }),
@@ -295,6 +329,7 @@ export const useAppStore = create<AppState>()(
         defaultClaudeArgs: state.defaultClaudeArgs,
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
+        telemetryEnabled: state.telemetryEnabled,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
       }),

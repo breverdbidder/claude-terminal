@@ -18,6 +18,8 @@ import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { OrchestrationPanel } from './components/OrchestrationPanel';
+import { SessionTimeline } from './components/SessionTimeline';
+import { MemoryEditor } from './components/MemoryEditor';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -78,8 +80,8 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, createTerminal } = useTerminalStore();
+  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, telemetryEnabled, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
 
@@ -119,15 +121,35 @@ function App() {
     checkWhatsNew();
   }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
 
+  // Telemetry heartbeat — fire once on startup
+  useEffect(() => {
+    if (showSetup !== false) return;
+    getVersion().then((appVersion) => {
+      invoke('send_telemetry_heartbeat', { enabled: telemetryEnabled, appVersion }).catch(() => {});
+    });
+  }, [showSetup]);
+
   useEffect(() => {
     const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
-      handleTerminalOutput(event.payload.id, new Uint8Array(event.payload.data));
+      const { id, data } = event.payload;
+      handleTerminalOutput(id, new Uint8Array(data));
+
+      // Detect loop mode from terminal output
+      try {
+        const text = new TextDecoder().decode(new Uint8Array(data));
+        const loopMatch = text.match(/loop\s+(\d+[smh])\s+(.+)/i);
+        if (loopMatch) {
+          setLoopMode(id, { interval: loopMatch[1], prompt: loopMatch[2] });
+        }
+      } catch {
+        // Ignore decode errors
+      }
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [handleTerminalOutput]);
+  }, [handleTerminalOutput, setLoopMode]);
 
   useEffect(() => {
     const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
@@ -144,12 +166,37 @@ function App() {
       if (notifyOnFinish) {
         notify('Terminal Finished', `${name} has finished running.`);
       }
+
+      // Auto-summarize the session
+      (async () => {
+        try {
+          // Check if we already have a summary
+          const existing = await invoke<string | null>('get_session_summary', { terminalId: id });
+          if (existing) {
+            setSessionSummary(id, existing);
+            return;
+          }
+
+          // Get the log path for this terminal
+          const sessions = await invoke<{ id: number; terminal_id: string; log_path: string | null }[]>('get_session_history');
+          const session = sessions.find(s => s.terminal_id === id);
+          if (!session?.log_path) return;
+
+          const summary = await invoke<string | null>('summarize_session', { logPath: session.log_path });
+          if (summary) {
+            await invoke('save_session_summary', { terminalId: id, summary });
+            setSessionSummary(id, summary);
+          }
+        } catch (err) {
+          console.error('Failed to summarize session:', err);
+        }
+      })();
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [notifyOnFinish, notify, updateTerminalStatus]);
+  }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary]);
 
   // Restore previous session on startup — show banner instead of silently restoring
   useEffect(() => {
@@ -339,6 +386,8 @@ function App() {
             {snippetsModalOpen && <SnippetsModal />}
             {whatsNewOpen && <WhatsNewModal />}
             {claudeConfigOpen && <ClaudeConfigModal />}
+            {sessionTimelineOpen && <SessionTimeline />}
+            {memoryEditorOpen && <MemoryEditor />}
           </AnimatePresence>
           {commandPaletteOpen && <CommandPalette />}
         </>
