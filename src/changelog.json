@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.17.0",
+    "date": "2026-03-24",
+    "features": [
+      { "title": "Agent Teams Mission Control", "description": "Enhanced orchestration panel (F4) with live task board showing status, owners, and blocked dependencies" },
+      { "title": "Session Timeline & Resume Hub", "description": "New F7 modal with visual timeline of past sessions and one-click resume via --continue" },
+      { "title": "Loop Mode Dashboard", "description": "Auto-detect loop mode from terminal output with pulsing badges on tabs and sidebar" },
+      { "title": "Worktree-Aware Terminal Spawning", "description": "Toggle in New Terminal modal to run sessions in isolated git worktrees" },
+      { "title": "Model & Effort Switcher", "description": "Per-terminal model (Opus/Sonnet/Haiku) and effort (Low/Medium/High) selectors with color-coded badges" },
+      { "title": "Teleport & Remote Control", "description": "Quick-action buttons on running terminals for /teleport and /remote-control commands" },
+      { "title": "Smart Terminal Insights", "description": "Auto-summarize sessions via Claude Haiku when terminals stop, with summary card display" },
+      { "title": "CLAUDE.md & Memory Editor", "description": "New F8 modal for editing CLAUDE.md files, auto-memory files, and rules" }
+    ]
+  },
+  {
     "version": "1.16.1",
     "date": "2026-03-19",
     "features": [
