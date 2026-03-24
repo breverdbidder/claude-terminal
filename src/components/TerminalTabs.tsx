@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { AnimatePresence, Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
+import { TeleportActions } from './TeleportActions';
+import { SessionInsights } from './SessionInsights';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -93,7 +95,14 @@ export function TerminalTabs() {
             onReorder={() => {}}
             className="flex items-center overflow-x-auto"
           >
-            {terminalList.map((terminal) => (
+            {terminalList.map((terminal) => {
+              const instance = terminals.get(terminal.id);
+              const model = instance?.model;
+              const isWorktree = instance?.isWorktree;
+              const loopInfo = instance?.loopInfo;
+              const isRunning = terminal.status === 'Running';
+
+              return (
               <Reorder.Item
                 key={terminal.id}
                 value={terminal}
@@ -113,7 +122,27 @@ export function TerminalTabs() {
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />
                   )}
+                  {/* Badges */}
+                  {model && (
+                    <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${
+                      model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                      model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
+                      model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                      'bg-white/[0.06] text-text-tertiary'
+                    }`}>
+                      {model}
+                    </span>
+                  )}
+                  {isWorktree && (
+                    <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
+                  )}
+                  {loopInfo && (
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${loopInfo.interval}`} />
+                  )}
                   <span className="max-w-[160px] truncate">{terminal.nickname || terminal.label}</span>
+                  {isRunning && (
+                    <TeleportActions terminalId={terminal.id} />
+                  )}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     {activeTerminalId && terminal.id !== activeTerminalId && (
                       <button
@@ -151,7 +180,8 @@ export function TerminalTabs() {
                   </div>
                 </button>
               </Reorder.Item>
-            ))}
+              );
+            })}
           </Reorder.Group>
 
           <button
@@ -191,9 +221,18 @@ export function TerminalTabs() {
           {activeTerminalId ? (
             <div
               key={activeTerminalId}
-              className="absolute inset-0"
+              className="absolute inset-0 flex flex-col"
             >
-              <TerminalView terminalId={activeTerminalId} />
+              <div className="flex-1 min-h-0">
+                <TerminalView terminalId={activeTerminalId} />
+              </div>
+              {(() => {
+                const inst = terminals.get(activeTerminalId);
+                if (inst?.config.status === 'Stopped' && inst?.sessionSummary) {
+                  return <SessionInsights summary={inst.sessionSummary} />;
+                }
+                return null;
+              })()}
             </div>
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">

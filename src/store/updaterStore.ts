@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 
 interface UpdateInfo {
   version: string;
@@ -37,7 +38,23 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
 
     try {
       set({ status: 'checking', error: null });
-      const update = await check();
+
+      let headers: Record<string, string> = {};
+      try {
+        const [installationId, appVersion] = await Promise.all([
+          invoke<string>('get_installation_id'),
+          getVersion(),
+        ]);
+        headers = {
+          'X-Installation-Id': installationId,
+          'X-App-Version': appVersion,
+          'X-OS': navigator.platform,
+        };
+      } catch {
+        // Analytics headers are optional — continue without them
+      }
+
+      const update = await check({ headers });
 
       if (update) {
         set({

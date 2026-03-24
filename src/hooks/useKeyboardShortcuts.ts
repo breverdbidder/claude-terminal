@@ -108,6 +108,23 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // Session Timeline: F7
+      if (e.key === 'F7') {
+        e.preventDefault();
+        useAppStore.getState().toggleSessionTimeline();
+      }
+
+      // Memory Editor: F8
+      if (e.key === 'F8') {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (state.memoryEditorOpen) {
+          state.closeMemoryEditor();
+        } else {
+          state.openMemoryEditor();
+        }
+      }
+
       // Toggle Grid Mode: Ctrl+G
       if (ctrl && e.key === 'g') {
         e.preventDefault();

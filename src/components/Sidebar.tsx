@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, Brain } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 
@@ -25,7 +25,7 @@ export function Sidebar() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds } = useTerminalStore();
-  const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openSessionHistory, openSnippetsModal, openClaudeConfig, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
+  const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
 
   const terminalList = useMemo(() =>
     Array.from(terminals.values())
@@ -142,6 +142,29 @@ export function Sidebar() {
                       }`}>
                         {STATUS_LABELS[terminal.status]}
                       </span>
+                      {(() => {
+                        const instance = terminals.get(terminal.id);
+                        return (
+                          <>
+                            {instance?.isWorktree && (
+                              <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
+                            )}
+                            {instance?.loopInfo && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${instance.loopInfo.interval}`} />
+                            )}
+                            {instance?.model && (
+                              <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${
+                                instance.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
+                                instance.model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
+                                instance.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
+                                'bg-white/[0.06] text-text-tertiary'
+                              }`}>
+                                {instance.model}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <p className="text-text-tertiary text-[11px] truncate mt-0.5">
                       {terminal.working_directory}
@@ -277,11 +300,25 @@ export function Sidebar() {
           Snippets
         </button>
         <button
+          onClick={() => openSessionTimeline()}
+          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+        >
+          <Clock size={13} />
+          Session Timeline
+        </button>
+        <button
           onClick={() => openClaudeConfig()}
           className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <Settings size={13} />
           Claude Config
+        </button>
+        <button
+          onClick={() => openMemoryEditor()}
+          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+        >
+          <Brain size={13} />
+          Memory Editor
         </button>
         <button
           onClick={() => openProfileModal()}

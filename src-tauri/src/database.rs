@@ -84,10 +84,21 @@ impl Database {
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                terminal_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_profiles_name ON profiles(name);
             CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
             CREATE INDEX IF NOT EXISTS idx_session_history_terminal_id ON session_history(terminal_id);
             CREATE INDEX IF NOT EXISTS idx_snippets_category ON snippets(category);
+
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             "
         ).map_err(|e| e.to_string())?;
 
@@ -311,5 +322,50 @@ impl Database {
         self.conn.execute("DELETE FROM snippets WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // Session summary methods
+
+    pub fn save_session_summary(&self, terminal_id: &str, summary: &str) -> Result<(), String> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO session_summaries (terminal_id, summary, created_at) VALUES (?1, ?2, ?3)",
+            params![terminal_id, summary, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_session_summary(&self, terminal_id: &str) -> Result<Option<String>, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT summary FROM session_summaries WHERE terminal_id = ?1",
+            params![terminal_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(summary) => Ok(Some(summary)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    // App meta methods
+
+    pub fn get_or_create_installation_id(&self) -> Result<String, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT value FROM app_meta WHERE key = 'installation_id'",
+            [],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(id) => Ok(id),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.conn.execute(
+                    "INSERT INTO app_meta (key, value) VALUES ('installation_id', ?1)",
+                    params![id],
+                ).map_err(|e| e.to_string())?;
+                Ok(id)
+            }
+            Err(e) => Err(e.to_string()),
+        }
     }
 }

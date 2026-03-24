@@ -4,6 +4,7 @@ mod commands;
 mod terminal;
 mod config;
 mod database;
+mod telemetry;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -78,6 +79,16 @@ fn main() {
             commands::read_claude_command,
             commands::write_claude_command,
             commands::delete_claude_command,
+            commands::get_installation_id,
+            commands::send_telemetry_heartbeat,
+            commands::get_team_tasks,
+            commands::summarize_session,
+            commands::save_session_summary,
+            commands::get_session_summary,
+            commands::list_memory_files,
+            commands::read_memory_file,
+            commands::write_memory_file,
+            commands::list_claude_md_files,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -26,6 +26,15 @@ interface TeamInfo {
   taskCount?: number;
 }
 
+interface TaskInfo {
+  id: string;
+  subject: string;
+  status: string;
+  owner: string | null;
+  blockedBy: string[];
+  activeForm: string | null;
+}
+
 function normalizePath(p: string): string {
   return p.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
 }
@@ -33,6 +42,7 @@ function normalizePath(p: string): string {
 export function OrchestrationPanel() {
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Map<string, TaskInfo[]>>(new Map());
   const [loading, setLoading] = useState(false);
   const terminals = useTerminalStore((s) => s.terminals);
   const setActiveTerminal = useTerminalStore((s) => s.setActiveTerminal);
@@ -42,6 +52,20 @@ export function OrchestrationPanel() {
     try {
       const result = await invoke<TeamInfo[]>('get_active_teams');
       setTeams(result);
+
+      // Fetch tasks for expanded team
+      if (expandedTeam) {
+        try {
+          const teamTasks = await invoke<TaskInfo[]>('get_team_tasks', { teamName: expandedTeam });
+          setTasks((prev) => {
+            const next = new Map(prev);
+            next.set(expandedTeam, teamTasks);
+            return next;
+          });
+        } catch {
+          // Task fetch failed silently
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch teams:', err);
     } finally {
@@ -49,11 +73,29 @@ export function OrchestrationPanel() {
     }
   };
 
+  const handleExpand = async (dirName: string) => {
+    const newExpanded = expandedTeam === dirName ? null : dirName;
+    setExpandedTeam(newExpanded);
+
+    if (newExpanded) {
+      try {
+        const teamTasks = await invoke<TaskInfo[]>('get_team_tasks', { teamName: newExpanded });
+        setTasks((prev) => {
+          const next = new Map(prev);
+          next.set(newExpanded, teamTasks);
+          return next;
+        });
+      } catch {
+        // Task fetch failed silently
+      }
+    }
+  };
+
   useEffect(() => {
     fetchTeams();
     const interval = setInterval(fetchTeams, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [expandedTeam]);
 
   const findMatchingTerminal = (cwd: string): string | null => {
     const normalized = normalizePath(cwd);
@@ -111,7 +153,7 @@ export function OrchestrationPanel() {
             return (
               <div key={team.dirName} className="mb-1">
                 <button
-                  onClick={() => setExpandedTeam(isExpanded ? null : team.dirName)}
+                  onClick={() => handleExpand(team.dirName)}
                   className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-white/[0.04] transition-colors"
                 >
                   {isExpanded ? (
@@ -176,6 +218,50 @@ export function OrchestrationPanel() {
                         </div>
                       </div>
                     ))}
+
+                    {/* Task Board */}
+                    {tasks.get(team.dirName) && tasks.get(team.dirName)!.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-border/50">
+                        <div className="flex items-center gap-1.5 px-1.5 mb-1.5">
+                          <ListTodo size={11} className="text-text-tertiary" />
+                          <span className="text-text-tertiary text-[10px] font-medium uppercase tracking-wider">Tasks</span>
+                        </div>
+                        {tasks.get(team.dirName)!.map((task) => (
+                          <div key={task.id} className="flex items-start gap-2 p-1.5 rounded-md hover:bg-white/[0.02]">
+                            <div className="mt-1 flex-shrink-0">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  task.status === 'completed' ? 'bg-success' :
+                                  task.status === 'in_progress' ? 'bg-warning animate-pulse' :
+                                  'bg-text-tertiary'
+                                }`}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[11px] truncate ${
+                                task.status === 'completed' ? 'text-text-tertiary line-through' : 'text-text-primary'
+                              }`}>
+                                {task.status === 'in_progress' && task.activeForm
+                                  ? task.activeForm
+                                  : task.subject}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {task.owner && (
+                                  <span className="text-[9px] text-text-tertiary bg-bg-primary px-1 rounded">
+                                    {task.owner}
+                                  </span>
+                                )}
+                                {task.blockedBy.length > 0 && (
+                                  <span className="text-[9px] text-warning bg-warning/10 px-1 rounded">
+                                    blocked
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

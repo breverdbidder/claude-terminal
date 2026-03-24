@@ -15,10 +15,20 @@ export interface TerminalConfig {
   color_tag: string | null;
 }
 
+export interface LoopInfo {
+  interval: string;
+  prompt: string;
+}
+
 interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
   restoredOutput?: string;
+  model?: string;
+  effort?: string;
+  isWorktree: boolean;
+  loopInfo?: LoopInfo | null;
+  sessionSummary?: string | null;
 }
 
 interface TerminalState {
@@ -44,6 +54,8 @@ interface TerminalState {
   setXterm: (id: string, xterm: Terminal) => void;
   handleTerminalOutput: (id: string, data: Uint8Array) => void;
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
+  setLoopMode: (id: string, info: LoopInfo | null) => void;
+  setSessionSummary: (id: string, summary: string | null) => void;
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
@@ -66,9 +78,22 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nickname: nickname || null,
         },
       });
+      // Parse model, effort, worktree from claude_args
+      let model: string | undefined;
+      let effort: string | undefined;
+      const isWorktree = claudeArgs.includes('--worktree');
+      for (let i = 0; i < claudeArgs.length; i++) {
+        if (claudeArgs[i] === '--model' && i + 1 < claudeArgs.length) {
+          model = claudeArgs[i + 1];
+        }
+        if (claudeArgs[i] === '--effort' && i + 1 < claudeArgs.length) {
+          effort = claudeArgs[i + 1];
+        }
+      }
+
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        newTerminals.set(config.id, { config, xterm: null, restoredOutput });
+        newTerminals.set(config.id, { config, xterm: null, restoredOutput, model, effort, isWorktree });
         return {
           terminals: newTerminals,
           activeTerminalId: config.id,
@@ -192,6 +217,28 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const instance = newTerminals.get(id);
       if (instance) {
         instance.config.status = status;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setLoopMode: (id, info) => {
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.loopInfo = info;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setSessionSummary: (id, summary) => {
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.sessionSummary = summary;
       }
       return { terminals: newTerminals };
     });
