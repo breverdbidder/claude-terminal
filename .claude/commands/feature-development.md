@@ -14,9 +14,9 @@ Standard feature implementation workflow
 
 ## Common Files
 
+- `src/*`
 - `src/components/*`
 - `src/hooks/*`
-- `src/store/*`
 
 ## Suggested Sequence
 
