@@ -89,6 +89,8 @@ interface AppState {
   setGridLayout: (layout: GridLayout) => void;
   setGridFocusedIndex: (index: number | null) => void;
   clearGrid: () => void;
+  swapGridPositions: (fromIndex: number, toIndex: number) => void;
+  replaceInGrid: (index: number, terminalId: string) => void;
 
   // Command Palette actions (F1)
   openCommandPalette: () => void;
@@ -272,6 +274,19 @@ export const useAppStore = create<AppState>()(
         gridLayout: '1x1',
         gridFocusedIndex: null,
         gridMode: false,
+      }),
+      swapGridPositions: (fromIndex, toIndex) => set((state) => {
+        const newIds = [...state.gridTerminalIds];
+        if (fromIndex < 0 || fromIndex >= newIds.length || toIndex < 0 || toIndex >= newIds.length) return state;
+        [newIds[fromIndex], newIds[toIndex]] = [newIds[toIndex], newIds[fromIndex]];
+        return { gridTerminalIds: newIds };
+      }),
+      replaceInGrid: (index, terminalId) => set((state) => {
+        const newIds = [...state.gridTerminalIds];
+        if (index < 0 || index >= newIds.length) return state;
+        if (newIds.includes(terminalId)) return state;
+        newIds[index] = terminalId;
+        return { gridTerminalIds: newIds };
       }),
 
       // Command Palette actions (F1)

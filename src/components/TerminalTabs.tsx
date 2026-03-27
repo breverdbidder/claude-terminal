@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { AnimatePresence, Reorder } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
@@ -8,6 +8,7 @@ import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { TeleportActions } from './TeleportActions';
 import { SessionInsights } from './SessionInsights';
+import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -27,12 +28,37 @@ export function TerminalTabs() {
     }
   };
 
+  const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
+
   const handleSplitWith = (terminalId: string) => {
     if (activeTerminalId && terminalId !== activeTerminalId) {
       setSplitTerminals([activeTerminalId, terminalId]);
       setSplitMode(true);
     }
   };
+
+  const handleTabDragOver = useCallback((e: React.DragEvent, tabTerminalId: string) => {
+    if (isTerminalDrag(e)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setSplitDropTargetId(tabTerminalId);
+    }
+  }, []);
+
+  const handleTabDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setSplitDropTargetId(null);
+    }
+  }, []);
+
+  const handleTabDrop = useCallback((e: React.DragEvent, tabTerminalId: string) => {
+    e.preventDefault();
+    setSplitDropTargetId(null);
+    const payload = getDragData(e);
+    if (!payload || payload.terminalId === tabTerminalId) return;
+    setSplitTerminals([tabTerminalId, payload.terminalId]);
+    setSplitMode(true);
+  }, [setSplitTerminals, setSplitMode]);
 
   // If split mode is active with valid terminals, show split view
   if (splitMode && splitTerminalIds && terminals.has(splitTerminalIds[0]) && terminals.has(splitTerminalIds[1])) {
@@ -110,12 +136,20 @@ export function TerminalTabs() {
               >
                 <button
                   onClick={() => setActiveTerminal(terminal.id)}
+                  onDragOver={(e) => handleTabDragOver(e, terminal.id)}
+                  onDragLeave={handleTabDragLeave}
+                  onDrop={(e) => handleTabDrop(e, terminal.id)}
                   className={`group relative flex items-center gap-2 px-3 h-10 text-[12px] transition-colors border-t-2 ${
-                    activeTerminalId === terminal.id
-                      ? 'bg-bg-primary text-text-primary border-t-accent-primary'
-                      : 'hover:bg-white/[0.04] text-text-secondary border-t-transparent'
+                    splitDropTargetId === terminal.id
+                      ? 'bg-accent-primary/10 text-accent-primary border-t-accent-primary'
+                      : activeTerminalId === terminal.id
+                        ? 'bg-bg-primary text-text-primary border-t-accent-primary'
+                        : 'hover:bg-white/[0.04] text-text-secondary border-t-transparent'
                   }`}
                 >
+                  {splitDropTargetId === terminal.id && (
+                    <SplitSquareHorizontal size={12} className="text-accent-primary flex-shrink-0 animate-pulse" />
+                  )}
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
                   )}

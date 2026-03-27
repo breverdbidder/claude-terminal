@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, Brain } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, Brain, GripVertical } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { setDragData } from '../utils/dragDrop';
 
 const STATUS_COLORS = {
   Running: 'bg-success',
@@ -23,6 +24,7 @@ export function Sidebar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingNicknameId, setEditingNicknameId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds } = useTerminalStore();
   const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
@@ -81,14 +83,27 @@ export function Sidebar() {
         {terminalList.map((terminal) => (
           <div
             key={terminal.id}
+            draggable
+            onDragStart={(e) => {
+              setDragData(e, { terminalId: terminal.id, source: 'sidebar' });
+              setDraggingId(terminal.id);
+              if (e.dataTransfer.setDragImage) {
+                const el = e.currentTarget;
+                e.dataTransfer.setDragImage(el, 20, 20);
+              }
+            }}
+            onDragEnd={() => setDraggingId(null)}
             onClick={() => setActiveTerminal(terminal.id)}
             className={`group relative py-2.5 px-3 rounded-md mb-0.5 cursor-pointer transition-colors ${
+              draggingId === terminal.id ? 'opacity-40' : ''
+            } ${
               activeTerminalId === terminal.id
                 ? 'bg-white/[0.06] border-l-2 border-l-accent-primary'
                 : 'hover:bg-white/[0.04] border-l-2 border-l-transparent'
             }`}
           >
             <div className="flex items-start gap-2.5">
+              <GripVertical size={12} className="mt-1.5 text-text-tertiary opacity-0 group-hover:opacity-50 flex-shrink-0 cursor-grab" />
               {/* Color Tag & Status & Unread */}
               <div className="mt-1.5 flex items-center gap-1.5 flex-shrink-0">
                 {terminal.color_tag && (

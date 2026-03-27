@@ -6,6 +6,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
+import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalViewProps {
@@ -138,7 +139,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   }, [terminalId, instance, writeToTerminal, resizeTerminal, setXterm, toggleSearch]);
 
   return (
-    <div className="h-full w-full bg-bg-primary relative">
+    <div className="h-full w-full bg-bg-primary relative flex flex-col">
       <TerminalSearch
         searchAddon={searchAddonRef.current}
         visible={searchVisible}
@@ -146,8 +147,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       />
       <div
         ref={containerRef}
-        className="h-full w-full"
+        className="flex-1 min-h-0 w-full"
       />
+      <TerminalStatusBar terminalId={terminalId} />
     </div>
   );
 }
