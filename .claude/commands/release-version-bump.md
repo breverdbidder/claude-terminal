@@ -10,16 +10,16 @@ Use this workflow when working on **release-version-bump** in `claude-terminal`.
 
 ## Goal
 
-Publishes a new release version, updating version numbers, changelog, and documentation.
+Prepares and publishes a new release version of the project, updating version numbers, changelogs, and relevant configuration files.
 
 ## Common Files
 
-- `package.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock`
-- `src-tauri/tauri.conf.json`
-- `src/changelog.json`
+- `CLAUDE.md`
 - `README.md`
+- `package.json`
+- `src-tauri/Cargo.lock`
+- `src-tauri/Cargo.toml`
+- `src-tauri/tauri.conf.json`
 
 ## Suggested Sequence
 
@@ -30,11 +30,11 @@ Publishes a new release version, updating version numbers, changelog, and docume
 
 ## Typical Commit Signals
 
-- Update version in package.json and/or Cargo.toml
-- Update changelog.json with new version entry
-- Update README.md and CLAUDE.md with new version and features
-- Update src-tauri/tauri.conf.json with new version and/or signing keys
-- Commit and tag the release
+- Update CLAUDE.md with new version and/or release notes
+- Update README.md if necessary
+- Update package.json version
+- Update src-tauri/Cargo.lock and src-tauri/Cargo.toml for Rust dependencies
+- Update src-tauri/tauri.conf.json for Tauri config
 
 ## Notes
 
