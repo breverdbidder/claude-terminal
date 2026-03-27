@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
 import '@xterm/xterm/css/xterm.css';
@@ -59,7 +60,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      invoke('open_external_url', { url: uri }).catch((err) => {
+        console.error('Failed to open URL:', err);
+      });
+    });
     const searchAddon = new SearchAddon();
 
     terminal.loadAddon(fitAddon);
