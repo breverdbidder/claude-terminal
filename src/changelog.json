@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.17.3",
+    "date": "2026-03-29",
+    "features": [
+      { "title": "Terminal Status Bar", "description": "Persistent bar at the bottom of each terminal showing session duration, model/effort badges, working directory, and quick actions" },
+      { "title": "Drag & Drop Terminal Management", "description": "Drag terminals from sidebar into grid cells, swap grid cells, and drop onto tabs for split view" },
+      { "title": "Fix URL Click", "description": "Clicking URLs in terminal output now correctly opens them in your system browser" }
+    ]
+  },
+  {
     "version": "1.17.2",
     "date": "2026-03-29",
     "features": [
