@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.17.5",
+    "date": "2026-03-30",
+    "features": [
+      { "title": "Fix Terminal Keyboard Input", "description": "Terminals now auto-focus on creation so keyboard input works immediately — fixes issue where Enter, Esc, arrow keys, and number keys were unresponsive on first-time trust prompts" }
+    ]
+  },
+  {
     "version": "1.17.4",
     "date": "2026-03-30",
     "features": [

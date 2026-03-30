@@ -76,6 +76,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.open(containerRef.current);
     fitAddon.fit();
 
+    // Auto-focus so keyboard input works immediately without requiring a click
+    terminal.focus();
+
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
