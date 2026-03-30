@@ -366,6 +366,7 @@ export function SettingsModal() {
                 ['Toggle Grid View', 'Ctrl+G'],
                 ['Add to Grid', 'Ctrl+Shift+G'],
                 ['Search Terminal', 'Ctrl+Shift+F'],
+                ['Worktree Manager', 'Ctrl+Shift+W'],
               ].map(([label, shortcut]) => (
                 <div key={label} className="flex justify-between text-[12px]">
                   <span className="text-text-secondary">{label}</span>

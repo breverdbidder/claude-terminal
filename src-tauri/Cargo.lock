@@ -473,6 +473,7 @@ dependencies = [
  "notify-rust",
  "open",
  "portable-pty",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

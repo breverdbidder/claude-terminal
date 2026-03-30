@@ -10,6 +10,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
+import { WorktreeModal } from './components/WorktreeModal';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
 import { useAppStore } from './store/appStore';
@@ -70,7 +71,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, hintsOpen, changesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, notifyOnFinish, restoreSession, triggerChangesRefresh } = useAppStore();
+  const { sidebarOpen, hintsOpen, changesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, notifyOnFinish, restoreSession, triggerChangesRefresh } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -223,6 +224,7 @@ function App() {
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
             {workspaceModalOpen && <WorkspaceModal />}
+            {worktreeModalOpen && <WorktreeModal />}
           </AnimatePresence>
         </>
       )}

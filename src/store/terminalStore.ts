@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
+import type { WorktreeDetectResult } from '../types/git';
 
 export interface TerminalConfig {
   id: string;
@@ -24,6 +25,7 @@ interface TerminalState {
   terminals: Map<string, TerminalInstance>;
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
+  gitInfoCache: Map<string, WorktreeDetectResult>;
 
   createTerminal: (
     label: string,
@@ -45,12 +47,14 @@ interface TerminalState {
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
+  fetchGitInfo: (terminalId: string) => Promise<void>;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
+  gitInfoCache: new Map(),
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname) => {
     try {
@@ -76,6 +80,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         };
       });
 
+      // Fetch git info in the background
+      get().fetchGitInfo(config.id);
+
       return config.id;
     } catch (error) {
       console.error('Failed to create terminal:', error);
@@ -97,10 +104,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newUnread = new Set(state.unreadTerminalIds);
       newUnread.delete(id);
 
+      const newGitCache = new Map(state.gitInfoCache);
+      newGitCache.delete(id);
+
       const remainingIds = Array.from(newTerminals.keys());
       return {
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
+        gitInfoCache: newGitCache,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -199,5 +210,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   hasUnread: (id) => {
     return get().unreadTerminalIds.has(id);
+  },
+
+  fetchGitInfo: async (terminalId) => {
+    const instance = get().terminals.get(terminalId);
+    if (!instance) return;
+
+    try {
+      const info = await invoke<WorktreeDetectResult>('get_worktree_info', {
+        path: instance.config.working_directory,
+      });
+      set((state) => {
+        const newCache = new Map(state.gitInfoCache);
+        newCache.set(terminalId, info);
+        return { gitInfoCache: newCache };
+      });
+    } catch {
+      // Silently ignore — non-git dirs or git not installed
+    }
   },
 }));

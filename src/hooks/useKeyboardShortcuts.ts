@@ -66,6 +66,22 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleGridMode();
       }
 
+      // Worktree Modal: Ctrl+Shift+W
+      if (ctrl && shift && e.key === 'W') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (activeId) {
+          const gitInfo = useTerminalStore.getState().gitInfoCache.get(activeId);
+          if (gitInfo?.is_git_repo) {
+            const terminal = terminalsRef.current.get(activeId);
+            const repoPath = gitInfo.is_worktree && gitInfo.main_repo_path
+              ? gitInfo.main_repo_path
+              : terminal?.config.working_directory || '';
+            useAppStore.getState().openWorktreeModal(repoPath);
+          }
+        }
+      }
+
       // Add current terminal to grid: Ctrl+Shift+G
       if (ctrl && shift && e.key === 'G') {
         e.preventDefault();

@@ -7,7 +7,7 @@ import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds } = useAppStore();
   const terminalList = useMemo(() => Array.from(terminals.values()).map(t => t.config), [terminals]);
 
@@ -58,7 +58,14 @@ export function TerminalTabs() {
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />
                   )}
-                  <span className="max-w-[160px] truncate">{terminal.nickname || terminal.label}</span>
+                  <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
+                  {gitInfoCache.get(terminal.id)?.current_branch && (
+                    <span className={`text-[11px] font-mono max-w-[60px] truncate ${
+                      gitInfoCache.get(terminal.id)?.is_worktree ? 'text-purple-400' : 'text-text-tertiary'
+                    }`}>
+                      {gitInfoCache.get(terminal.id)?.current_branch}
+                    </span>
+                  )}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
