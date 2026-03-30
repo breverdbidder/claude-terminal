@@ -1,10 +1,14 @@
 [package]
 name = "claude-terminal"
-version = "1.8.0"
+version = "1.17.3"
 edition = "2021"
 
+[features]
+default = []
+devtools = ["tauri/devtools"]
+
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
@@ -21,7 +25,9 @@ chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 directories = "5"
 open = "5"
+strip-ansi-escapes = "0.2"
 regex = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

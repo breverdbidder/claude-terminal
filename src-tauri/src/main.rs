@@ -4,6 +4,7 @@ mod commands;
 mod terminal;
 mod config;
 mod database;
+mod telemetry;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -65,6 +66,34 @@ fn main() {
             commands::get_repo_branches,
             commands::create_worktree,
             commands::remove_worktree,
+            commands::get_session_history,
+            commands::get_session_log,
+            commands::read_log_file,
+            commands::delete_session_history,
+            commands::save_snippet,
+            commands::get_snippets,
+            commands::delete_snippet,
+            commands::get_active_teams,
+            commands::read_claude_settings,
+            commands::write_claude_settings,
+            commands::list_claude_agents,
+            commands::read_claude_agent,
+            commands::write_claude_agent,
+            commands::delete_claude_agent,
+            commands::list_claude_commands,
+            commands::read_claude_command,
+            commands::write_claude_command,
+            commands::delete_claude_command,
+            commands::get_installation_id,
+            commands::send_telemetry_heartbeat,
+            commands::get_team_tasks,
+            commands::summarize_session,
+            commands::save_session_summary,
+            commands::get_session_summary,
+            commands::list_memory_files,
+            commands::read_memory_file,
+            commands::write_memory_file,
+            commands::list_claude_md_files,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -72,19 +101,22 @@ fn main() {
                 let terminals = app_state.terminals.clone();
                 let db = app_state.db.clone();
                 tauri::async_runtime::block_on(async {
-                    // Read configs before closing (immutable lock)
+                    // Read configs and save session (short lock)
                     let configs = {
                         let manager = terminals.lock().await;
                         manager.get_all_configs()
                     };
-                    // Save session to DB
                     {
                         let db = db.lock().await;
-                        let _ = db.save_last_session(&configs);
+                        if let Err(e) = db.save_last_session(&configs) {
+                            eprintln!("Failed to save last session on exit: {}", e);
+                        }
                     }
-                    // Now close all terminals
-                    let mut manager = terminals.lock().await;
-                    manager.close_all();
+                    // Close all terminals (drops PTY resources, reader threads clean up async)
+                    {
+                        let mut manager = terminals.lock().await;
+                        manager.close_all();
+                    }
                 });
             }
         })

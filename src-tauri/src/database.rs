@@ -4,6 +4,25 @@ use rusqlite::{params, Connection};
 use directories::ProjectDirs;
 use serde::{Serialize, Deserialize};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SessionHistoryEntry {
+    pub id: i64,
+    pub terminal_id: String,
+    pub label: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub log_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Snippet {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub category: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceInfo {
     pub name: String,
@@ -29,6 +48,8 @@ impl Database {
 
         conn.execute_batch(
             "
+            PRAGMA journal_mode=WAL;
+
             CREATE TABLE IF NOT EXISTS profiles (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -55,9 +76,29 @@ impl Database {
                 log_path TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS snippets (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'General',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                terminal_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_profiles_name ON profiles(name);
             CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
             CREATE INDEX IF NOT EXISTS idx_session_history_terminal_id ON session_history(terminal_id);
+            CREATE INDEX IF NOT EXISTS idx_snippets_category ON snippets(category);
+
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             "
         ).map_err(|e| e.to_string())?;
 
@@ -188,5 +229,143 @@ impl Database {
             .execute("DELETE FROM workspaces WHERE name = ?1", params![Self::LAST_SESSION_KEY])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // Session history methods
+
+    pub fn insert_session_history(&self, terminal_id: &str, label: &str, started_at: &str, log_path: Option<&str>) -> Result<i64, String> {
+        self.conn.execute(
+            "INSERT INTO session_history (terminal_id, label, started_at, log_path) VALUES (?1, ?2, ?3, ?4)",
+            params![terminal_id, label, started_at, log_path],
+        ).map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn update_session_ended(&self, terminal_id: &str, ended_at: &str) -> Result<(), String> {
+        self.conn.execute(
+            "UPDATE session_history SET ended_at = ?1 WHERE terminal_id = ?2 AND ended_at IS NULL",
+            params![ended_at, terminal_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_session_history(&self) -> Result<Vec<SessionHistoryEntry>, String> {
+        let mut stmt = self.conn
+            .prepare("SELECT id, terminal_id, label, started_at, ended_at, log_path FROM session_history ORDER BY started_at DESC LIMIT 100")
+            .map_err(|e| e.to_string())?;
+
+        let entries = stmt.query_map([], |row| {
+            Ok(SessionHistoryEntry {
+                id: row.get(0)?,
+                terminal_id: row.get(1)?,
+                label: row.get(2)?,
+                started_at: row.get(3)?,
+                ended_at: row.get(4)?,
+                log_path: row.get(5)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        entries.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn get_log_path_for_terminal(&self, terminal_id: &str) -> Result<Option<String>, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT log_path FROM session_history WHERE terminal_id = ?1 AND log_path IS NOT NULL ORDER BY started_at DESC LIMIT 1",
+            params![terminal_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(path) => Ok(Some(path)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn delete_session_history_entry(&self, id: i64) -> Result<(), String> {
+        self.conn.execute("DELETE FROM session_history WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // Snippet methods
+
+    pub fn save_snippet(&self, snippet: &Snippet) -> Result<(), String> {
+        if snippet.title.is_empty() || snippet.title.len() > 255 {
+            return Err("Snippet title must be 1-255 characters".to_string());
+        }
+        self.conn.execute(
+            "INSERT OR REPLACE INTO snippets (id, title, content, category, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![snippet.id, snippet.title, snippet.content, snippet.category, snippet.created_at],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_snippets(&self) -> Result<Vec<Snippet>, String> {
+        let mut stmt = self.conn
+            .prepare("SELECT id, title, content, category, created_at FROM snippets ORDER BY created_at DESC")
+            .map_err(|e| e.to_string())?;
+
+        let snippets = stmt.query_map([], |row| {
+            Ok(Snippet {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: row.get(2)?,
+                category: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        snippets.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn delete_snippet(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM snippets WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // Session summary methods
+
+    pub fn save_session_summary(&self, terminal_id: &str, summary: &str) -> Result<(), String> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO session_summaries (terminal_id, summary, created_at) VALUES (?1, ?2, ?3)",
+            params![terminal_id, summary, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_session_summary(&self, terminal_id: &str) -> Result<Option<String>, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT summary FROM session_summaries WHERE terminal_id = ?1",
+            params![terminal_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(summary) => Ok(Some(summary)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    // App meta methods
+
+    pub fn get_or_create_installation_id(&self) -> Result<String, String> {
+        let result: Result<String, _> = self.conn.query_row(
+            "SELECT value FROM app_meta WHERE key = 'installation_id'",
+            [],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(id) => Ok(id),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.conn.execute(
+                    "INSERT INTO app_meta (key, value) VALUES ('installation_id', ?1)",
+                    params![id],
+                ).map_err(|e| e.to_string())?;
+                Ok(id)
+            }
+            Err(e) => Err(e.to_string()),
+        }
     }
 }

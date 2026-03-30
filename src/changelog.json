@@ -1,0 +1,172 @@
+[
+  {
+    "version": "1.17.3",
+    "date": "2026-03-29",
+    "features": [
+      { "title": "Terminal Status Bar", "description": "Persistent bar at the bottom of each terminal showing session duration, model/effort badges, working directory, and quick actions" },
+      { "title": "Drag & Drop Terminal Management", "description": "Drag terminals from sidebar into grid cells, swap grid cells, and drop onto tabs for split view" },
+      { "title": "Fix URL Click", "description": "Clicking URLs in terminal output now correctly opens them in your system browser" }
+    ]
+  },
+  {
+    "version": "1.17.2",
+    "date": "2026-03-29",
+    "features": [
+      { "title": "Responsive New Terminal Modal", "description": "Modal now scrolls on smaller screens (FHD) so the Create button is always accessible" }
+    ]
+  },
+  {
+    "version": "1.17.1",
+    "date": "2026-03-24",
+    "features": [
+      { "title": "ECC Tools Integration", "description": "Added repository skills, workflow command scaffolds, and Codex agent configurations for enhanced AI-assisted development" }
+    ]
+  },
+  {
+    "version": "1.17.0",
+    "date": "2026-03-24",
+    "features": [
+      { "title": "Agent Teams Mission Control", "description": "Enhanced orchestration panel (F4) with live task board showing status, owners, and blocked dependencies" },
+      { "title": "Session Timeline & Resume Hub", "description": "New F7 modal with visual timeline of past sessions and one-click resume via --continue" },
+      { "title": "Loop Mode Dashboard", "description": "Auto-detect loop mode from terminal output with pulsing badges on tabs and sidebar" },
+      { "title": "Worktree-Aware Terminal Spawning", "description": "Toggle in New Terminal modal to run sessions in isolated git worktrees" },
+      { "title": "Model & Effort Switcher", "description": "Per-terminal model (Opus/Sonnet/Haiku) and effort (Low/Medium/High) selectors with color-coded badges" },
+      { "title": "Teleport & Remote Control", "description": "Quick-action buttons on running terminals for /teleport and /remote-control commands" },
+      { "title": "Smart Terminal Insights", "description": "Auto-summarize sessions via Claude Haiku when terminals stop, with summary card display" },
+      { "title": "CLAUDE.md & Memory Editor", "description": "New F8 modal for editing CLAUDE.md files, auto-memory files, and rules" }
+    ]
+  },
+  {
+    "version": "1.16.1",
+    "date": "2026-03-19",
+    "features": [
+      { "title": "Fixed application freezing and crashing", "description": "Resolved a deadlock caused by synchronous thread joins on terminal close that blocked the entire UI on Windows" },
+      { "title": "Fixed exit handler deadlock", "description": "App shutdown no longer hangs when closing terminals with active PTY readers" },
+      { "title": "Improved mutex safety", "description": "Added timeout protection for lock acquisition in terminal output processing" }
+    ]
+  },
+  {
+    "version": "1.16.0",
+    "date": "2026-03-17",
+    "features": [
+      { "title": "Fixed thread/resource leak", "description": "Reader threads are now properly tracked and joined on terminal close" },
+      { "title": "Fixed terminal status tracking", "description": "Terminal status now correctly updates to Stopped when process exits" },
+      { "title": "Fixed silent error suppression", "description": "Database errors are now logged instead of silently discarded" },
+      { "title": "Fixed shutdown race condition", "description": "Session save and terminal cleanup now happen atomically" },
+      { "title": "Fixed unmounted component callbacks", "description": "Prevented state updates on unmounted React components" },
+      { "title": "Added error handling to ProfileModal", "description": "Save/delete operations now show errors in the UI" },
+      { "title": "Fixed missing React effect dependencies", "description": "What's New modal and profile form now properly react to changes" }
+    ]
+  },
+  {
+    "version": "1.15.0",
+    "date": "2026-03-11",
+    "features": [
+      { "title": "Session Output Restoration", "description": "Restored terminals now show previous session output with visual separators, so you can pick up right where you left off" }
+    ]
+  },
+  {
+    "version": "1.14.0",
+    "date": "2026-03-07",
+    "features": [
+      { "title": "Claude Config Manager (F6)", "description": "Manage global Claude Code configuration from within the app — edit settings.json, create/edit/delete agents and custom commands" },
+      { "title": "Settings tab", "description": "JSON editor for ~/.claude/settings.json with syntax highlighting" },
+      { "title": "Agents tab", "description": "Create, edit, and delete agent files in ~/.claude/agents/" },
+      { "title": "Commands tab", "description": "Create, edit, and delete custom command files in ~/.claude/commands/" }
+    ]
+  },
+  {
+    "version": "1.13.0",
+    "date": "2026-03-04",
+    "features": [
+      { "title": "macOS Support", "description": "Full macOS compatibility with native shell integration" },
+      { "title": "Security Hardening", "description": "Shell injection prevention, expanded input validation, and credential leak fixes" }
+    ]
+  },
+  {
+    "version": "1.12.1",
+    "date": "2026-03-04",
+    "features": [
+      { "title": "Fix Ctrl+V paste reliability", "description": "Replaced async Clipboard API with native browser paste to fix silent failures due to focus/permission issues" },
+      { "title": "Fix Ctrl+Z in terminal", "description": "Added explicit handling for Ctrl+Z which was being intercepted by the browser as undo instead of sending to the PTY" }
+    ]
+  },
+  {
+    "version": "1.12.0",
+    "date": "2026-02-27",
+    "features": [
+      { "title": "Agent Teams Panel (F4)", "description": "Monitor Claude Code multi-agent team sessions with real-time team structure, member details, and task counts" }
+    ]
+  },
+  {
+    "version": "1.11.0",
+    "date": "2026-02-25",
+    "features": [
+      { "title": "What's New Modal", "description": "See release notes after each update, including skipped versions" }
+    ]
+  },
+  {
+    "version": "1.10.0",
+    "date": "2026-02-25",
+    "features": [
+      { "title": "Command Palette (F1)", "description": "Quick access to all actions via a searchable command palette" },
+      { "title": "Output Logging", "description": "Automatically log terminal output to files for later review" },
+      { "title": "Crash Recovery (F3)", "description": "Restore your previous session after an unexpected shutdown" },
+      { "title": "Split Pane (F4)", "description": "View two terminals side by side with adjustable split ratio" },
+      { "title": "Snippets (F5)", "description": "Save and quickly insert reusable text snippets into terminals" }
+    ]
+  },
+  {
+    "version": "1.9.0",
+    "date": "2026-02-25",
+    "features": [
+      { "title": "Session History (F2)", "description": "Browse and search your past terminal sessions" },
+      { "title": "Workspace Save/Load", "description": "Save and restore complete workspace configurations" }
+    ]
+  },
+  {
+    "version": "1.8.1",
+    "date": "2026-02-25",
+    "features": [
+      { "title": "Screenshot updates", "description": "Updated README screenshots with current app views" }
+    ]
+  },
+  {
+    "version": "1.8.0",
+    "date": "2026-02-21",
+    "features": [
+      { "title": "File Changes Panel", "description": "Per-terminal git status panel showing changed files" }
+    ]
+  },
+  {
+    "version": "1.7.2",
+    "date": "2026-02-20",
+    "features": [
+      { "title": "Bug fixes and stability improvements" }
+    ]
+  },
+  {
+    "version": "1.7.1",
+    "date": "2026-02-18",
+    "features": [
+      { "title": "UI refinements", "description": "Dynamic version display and backend improvements" }
+    ]
+  },
+  {
+    "version": "1.7.0",
+    "date": "2026-02-18",
+    "features": [
+      { "title": "Claude Code Agents", "description": "Manage Claude Code agents directly from the app" },
+      { "title": "Commands & Settings", "description": "New commands and settings management features" }
+    ]
+  },
+  {
+    "version": "1.6.0",
+    "date": "2026-02-18",
+    "features": [
+      { "title": "Configuration Profiles", "description": "Create and switch between saved terminal configurations" },
+      { "title": "In-app Auto-updater", "description": "Automatic update detection and installation" },
+      { "title": "Keyboard Shortcuts", "description": "Global keyboard shortcuts for common actions" }
+    ]
+  }
+]

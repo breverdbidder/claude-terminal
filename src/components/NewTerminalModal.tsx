@@ -8,6 +8,8 @@ import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 
+const isMac = navigator.platform.toUpperCase().includes('MAC');
+
 interface ConfigProfile {
   id: string;
   name: string;
@@ -41,6 +43,9 @@ export function NewTerminalModal() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [defaultDirectory, setDefaultDirectory] = useState('');
+  const [useWorktree, setUseWorktree] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
+  const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -76,7 +81,7 @@ export function NewTerminalModal() {
       setClaudeArgs(defaultClaudeArgs);
       setEnvVars({});
     }
-  }, [selectedProfileId, profiles]);
+  }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -223,7 +228,7 @@ export function NewTerminalModal() {
     }
 
     // Validate claude args don't contain shell metacharacters
-    const dangerousPattern = /[;&|`$(){}]/;
+    const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
     for (const arg of claudeArgs) {
       if (dangerousPattern.test(arg)) {
         setError(`Invalid character in argument: "${arg}". Remove shell metacharacters.`);
@@ -233,13 +238,27 @@ export function NewTerminalModal() {
 
     setIsCreating(true);
     try {
-      const label = `Terminal ${terminals.size + 1}`;
+      const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+      const baseName = selectedProfile?.name || 'Terminal';
+      const label = `${baseName} ${terminals.size + 1}`;
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
+
+      // Build final args with model, effort, and worktree prepended
+      const finalArgs = [...claudeArgs];
+      if (selectedModel !== 'default') {
+        finalArgs.unshift('--model', selectedModel);
+      }
+      if (selectedEffort !== 'default') {
+        finalArgs.unshift('--effort', selectedEffort);
+      }
+      if (useWorktree) {
+        finalArgs.unshift('--worktree');
+      }
 
       await createTerminal(
         label,
         workingDirectory,
-        claudeArgs,
+        finalArgs,
         envVars,
         colorTag,
         nickname || undefined
@@ -269,7 +288,7 @@ export function NewTerminalModal() {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-lg overflow-hidden"
+        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -286,7 +305,7 @@ export function NewTerminalModal() {
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
           {/* Nickname */}
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">
@@ -350,7 +369,7 @@ export function NewTerminalModal() {
                 value={workingDirectory}
                 onChange={(e) => setWorkingDirectory(e.target.value)}
                 className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
-                placeholder="C:\path\to\project"
+                placeholder={isMac ? "/path/to/project" : "C:\\path\\to\\project"}
               />
               <button
                 onClick={handleBrowseDirectory}
@@ -516,6 +535,69 @@ export function NewTerminalModal() {
               Command: <code className="text-text-secondary">claude {claudeArgs.join(' ')}</code>
             </p>
           </div>
+          {/* Worktree Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
+              <p className="text-text-tertiary text-[11px]">Run in a separate git worktree</p>
+            </div>
+            <button
+              onClick={() => setUseWorktree(!useWorktree)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                useWorktree ? 'bg-accent-primary' : 'bg-border-light'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  useWorktree ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Model Selector */}
+          <div>
+            <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
+            <div className="flex gap-1.5">
+              {(['default', 'opus', 'sonnet', 'haiku'] as const).map((model) => (
+                <button
+                  key={model}
+                  onClick={() => setSelectedModel(model)}
+                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+                    selectedModel === model
+                      ? model === 'opus' ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
+                      : model === 'sonnet' ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
+                      : model === 'haiku' ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/30'
+                      : 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
+                      : 'bg-bg-primary ring-1 ring-border-light text-text-secondary hover:ring-border'
+                  }`}
+                >
+                  {model === 'default' ? 'Default' : model.charAt(0).toUpperCase() + model.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Effort Selector */}
+          <div>
+            <label className="block text-text-secondary text-[12px] mb-1.5">Effort</label>
+            <div className="flex gap-1.5">
+              {(['default', 'low', 'medium', 'high'] as const).map((effort) => (
+                <button
+                  key={effort}
+                  onClick={() => setSelectedEffort(effort)}
+                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+                    selectedEffort === effort
+                      ? 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
+                      : 'bg-bg-primary ring-1 ring-border-light text-text-secondary hover:ring-border'
+                  }`}
+                >
+                  {effort === 'default' ? 'Default' : effort.charAt(0).toUpperCase() + effort.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 rounded-md bg-error/5 ring-1 ring-error/20">
               <p className="text-error text-[12px]">{error}</p>

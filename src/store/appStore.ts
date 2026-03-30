@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
+export type SplitOrientation = 'horizontal' | 'vertical';
+
 interface AppState {
   sidebarOpen: boolean;
   hintsOpen: boolean;
@@ -17,6 +19,7 @@ interface AppState {
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
   restoreSession: boolean;
+  telemetryEnabled: boolean;
 
   // Changes panel
   changesRefreshTrigger: number;
@@ -26,6 +29,41 @@ interface AppState {
   gridTerminalIds: string[];
   gridLayout: GridLayout;
   gridFocusedIndex: number | null;
+
+  // Command Palette (F1)
+  commandPaletteOpen: boolean;
+
+  // Session History (F2)
+  sessionHistoryOpen: boolean;
+
+  // Crash Recovery (F3)
+  showRestoreBanner: boolean;
+  pendingRestoreConfigs: SavedTerminalConfig[] | null;
+
+  // Split Pane (Ctrl+\)
+  splitMode: boolean;
+  splitTerminalIds: [string, string] | null;
+  splitOrientation: SplitOrientation;
+  splitRatio: number;
+
+  // Agent Teams (F4)
+  orchestrationOpen: boolean;
+
+  // Snippets (F5)
+  snippetsModalOpen: boolean;
+
+  // Claude Config (F6)
+  claudeConfigOpen: boolean;
+
+  // Session Timeline (F7)
+  sessionTimelineOpen: boolean;
+
+  // Memory Editor (F8)
+  memoryEditorOpen: boolean;
+
+  // What's New
+  whatsNewOpen: boolean;
+  lastSeenVersion: string | null;
 
   toggleSidebar: () => void;
   toggleHints: () => void;
@@ -44,6 +82,7 @@ interface AppState {
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
+  setTelemetryEnabled: (enabled: boolean) => void;
 
   // Grid actions
   toggleGridMode: () => void;
@@ -54,6 +93,64 @@ interface AppState {
   setGridLayout: (layout: GridLayout) => void;
   setGridFocusedIndex: (index: number | null) => void;
   clearGrid: () => void;
+  swapGridPositions: (fromIndex: number, toIndex: number) => void;
+  replaceInGrid: (index: number, terminalId: string) => void;
+
+  // Command Palette actions (F1)
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
+  toggleCommandPalette: () => void;
+
+  // Session History actions (F2)
+  openSessionHistory: () => void;
+  closeSessionHistory: () => void;
+
+  // Crash Recovery actions (F3)
+  setShowRestoreBanner: (show: boolean) => void;
+  setPendingRestoreConfigs: (configs: SavedTerminalConfig[] | null) => void;
+
+  // Split Pane actions (Ctrl+\)
+  toggleSplitMode: () => void;
+  setSplitMode: (enabled: boolean) => void;
+  setSplitTerminals: (ids: [string, string] | null) => void;
+  setSplitOrientation: (orientation: SplitOrientation) => void;
+  setSplitRatio: (ratio: number) => void;
+  clearSplit: () => void;
+
+  // Agent Teams actions (F4)
+  toggleOrchestration: () => void;
+
+  // Snippets actions (F5)
+  openSnippetsModal: () => void;
+  closeSnippetsModal: () => void;
+
+  // Claude Config actions (F6)
+  openClaudeConfig: () => void;
+  closeClaudeConfig: () => void;
+
+  // Session Timeline actions (F7)
+  openSessionTimeline: () => void;
+  closeSessionTimeline: () => void;
+  toggleSessionTimeline: () => void;
+
+  // Memory Editor actions (F8)
+  openMemoryEditor: () => void;
+  closeMemoryEditor: () => void;
+
+  // What's New actions
+  openWhatsNew: () => void;
+  closeWhatsNew: () => void;
+  setLastSeenVersion: (version: string) => void;
+}
+
+interface SavedTerminalConfig {
+  id: string;
+  label: string;
+  nickname: string | null;
+  working_directory: string;
+  claude_args: string[];
+  env_vars: Record<string, string>;
+  color_tag: string | null;
 }
 
 // Helper to determine optimal layout based on terminal count
@@ -84,9 +181,10 @@ export const useAppStore = create<AppState>()(
       workspaceModalOpen: false,
       worktreeModalOpen: false,
       worktreeModalRepoPath: null,
-      defaultClaudeArgs: ['--dangerously-skip-permissions'],
+      defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
+      telemetryEnabled: true,
 
       // Changes panel
       changesRefreshTrigger: 0,
@@ -96,6 +194,41 @@ export const useAppStore = create<AppState>()(
       gridTerminalIds: [],
       gridLayout: '1x1',
       gridFocusedIndex: null,
+
+      // Command Palette (F1)
+      commandPaletteOpen: false,
+
+      // Session History (F2)
+      sessionHistoryOpen: false,
+
+      // Crash Recovery (F3)
+      showRestoreBanner: false,
+      pendingRestoreConfigs: null,
+
+      // Split Pane (Ctrl+\)
+      splitMode: false,
+      splitTerminalIds: null,
+      splitOrientation: 'horizontal' as SplitOrientation,
+      splitRatio: 0.5,
+
+      // Agent Teams (F4)
+      orchestrationOpen: false,
+
+      // Snippets (F5)
+      snippetsModalOpen: false,
+
+      // Claude Config (F6)
+      claudeConfigOpen: false,
+
+      // Session Timeline (F7)
+      sessionTimelineOpen: false,
+
+      // Memory Editor (F8)
+      memoryEditorOpen: false,
+
+      // What's New
+      whatsNewOpen: false,
+      lastSeenVersion: null,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen })),
@@ -114,6 +247,7 @@ export const useAppStore = create<AppState>()(
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
+      setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
 
       // Grid actions
       toggleGridMode: () => set((state) => ({ gridMode: !state.gridMode })),
@@ -149,6 +283,65 @@ export const useAppStore = create<AppState>()(
         gridFocusedIndex: null,
         gridMode: false,
       }),
+      swapGridPositions: (fromIndex, toIndex) => set((state) => {
+        const newIds = [...state.gridTerminalIds];
+        if (fromIndex < 0 || fromIndex >= newIds.length || toIndex < 0 || toIndex >= newIds.length) return state;
+        [newIds[fromIndex], newIds[toIndex]] = [newIds[toIndex], newIds[fromIndex]];
+        return { gridTerminalIds: newIds };
+      }),
+      replaceInGrid: (index, terminalId) => set((state) => {
+        const newIds = [...state.gridTerminalIds];
+        if (index < 0 || index >= newIds.length) return state;
+        if (newIds.includes(terminalId)) return state;
+        newIds[index] = terminalId;
+        return { gridTerminalIds: newIds };
+      }),
+
+      // Command Palette actions (F1)
+      openCommandPalette: () => set({ commandPaletteOpen: true }),
+      closeCommandPalette: () => set({ commandPaletteOpen: false }),
+      toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
+
+      // Session History actions (F2)
+      openSessionHistory: () => set({ sessionHistoryOpen: true }),
+      closeSessionHistory: () => set({ sessionHistoryOpen: false }),
+
+      // Crash Recovery actions (F3)
+      setShowRestoreBanner: (show) => set({ showRestoreBanner: show }),
+      setPendingRestoreConfigs: (configs) => set({ pendingRestoreConfigs: configs }),
+
+      // Split Pane actions (Ctrl+\)
+      toggleSplitMode: () => set((state) => ({ splitMode: !state.splitMode })),
+      setSplitMode: (enabled) => set({ splitMode: enabled }),
+      setSplitTerminals: (ids) => set({ splitTerminalIds: ids }),
+      setSplitOrientation: (orientation) => set({ splitOrientation: orientation }),
+      setSplitRatio: (ratio) => set({ splitRatio: Math.max(0.2, Math.min(0.8, ratio)) }),
+      clearSplit: () => set({ splitMode: false, splitTerminalIds: null, splitRatio: 0.5 }),
+
+      // Agent Teams actions (F4)
+      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen })),
+
+      // Snippets actions (F5)
+      openSnippetsModal: () => set({ snippetsModalOpen: true }),
+      closeSnippetsModal: () => set({ snippetsModalOpen: false }),
+
+      // Claude Config actions (F6)
+      openClaudeConfig: () => set({ claudeConfigOpen: true }),
+      closeClaudeConfig: () => set({ claudeConfigOpen: false }),
+
+      // Session Timeline actions (F7)
+      openSessionTimeline: () => set({ sessionTimelineOpen: true }),
+      closeSessionTimeline: () => set({ sessionTimelineOpen: false }),
+      toggleSessionTimeline: () => set((state) => ({ sessionTimelineOpen: !state.sessionTimelineOpen })),
+
+      // Memory Editor actions (F8)
+      openMemoryEditor: () => set({ memoryEditorOpen: true }),
+      closeMemoryEditor: () => set({ memoryEditorOpen: false }),
+
+      // What's New actions
+      openWhatsNew: () => set({ whatsNewOpen: true }),
+      closeWhatsNew: () => set({ whatsNewOpen: false }),
+      setLastSeenVersion: (version) => set({ lastSeenVersion: version }),
     }),
     {
       name: 'claude-terminal-app',
@@ -159,6 +352,9 @@ export const useAppStore = create<AppState>()(
         defaultClaudeArgs: state.defaultClaudeArgs,
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
+        telemetryEnabled: state.telemetryEnabled,
+        orchestrationOpen: state.orchestrationOpen,
+        lastSeenVersion: state.lastSeenVersion,
       }),
     }
   )

@@ -4,6 +4,7 @@ import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Squa
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout, getOptimalLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
+import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
@@ -37,9 +38,45 @@ interface TerminalCellProps {
   onMaximize: () => void;
 }
 
-const TerminalCell = memo(function TerminalCell({ terminalId, isFocused, onFocus, onRemove, onMaximize }: TerminalCellProps) {
+const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, onFocus, onRemove, onMaximize }: TerminalCellProps) {
   const { terminals } = useTerminalStore();
+  const { swapGridPositions, replaceInGrid } = useAppStore();
+  const [dropOver, setDropOver] = useState(false);
   const terminal = terminals.get(terminalId);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (isTerminalDrag(e)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (isTerminalDrag(e)) {
+      e.preventDefault();
+      setDropOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear if leaving the cell entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDropOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDropOver(false);
+    const payload = getDragData(e);
+    if (!payload || payload.terminalId === terminalId) return;
+
+    if (payload.source === 'grid' && payload.sourceIndex !== undefined) {
+      swapGridPositions(payload.sourceIndex, index);
+    } else {
+      replaceInGrid(index, payload.terminalId);
+    }
+  }, [terminalId, index, swapGridPositions, replaceInGrid]);
 
   if (!terminal) {
     return (
@@ -51,18 +88,35 @@ const TerminalCell = memo(function TerminalCell({ terminalId, isFocused, onFocus
 
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        setDragData(e, { terminalId, source: 'grid', sourceIndex: index });
+      }}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className={`relative h-full flex flex-col rounded overflow-hidden transition-all ${
-        isFocused
-          ? 'ring-2 ring-accent-primary'
-          : 'ring-1 ring-border hover:ring-border-light'
+        dropOver
+          ? 'ring-2 ring-accent-primary bg-accent-primary/5'
+          : isFocused
+            ? 'ring-2 ring-accent-primary'
+            : 'ring-1 ring-border hover:ring-border-light'
       }`}
       onClick={onFocus}
     >
+      {/* Drop overlay */}
+      {dropOver && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-accent-primary/10 border-2 border-dashed border-accent-primary/40 rounded pointer-events-none">
+          <span className="text-accent-primary text-[11px] font-medium">Drop to swap</span>
+        </div>
+      )}
+
       {/* Cell Header */}
       <div className={`flex items-center justify-between px-3 h-6 bg-bg-secondary border-b ${
         isFocused ? 'border-accent-primary/30' : 'border-border'
       }`}>
-        <span className="text-[11px] text-text-secondary truncate font-medium">
+        <span className="text-[11px] text-text-secondary truncate font-medium cursor-grab">
           {terminal.config.nickname || terminal.config.label}
         </span>
         <div className="flex items-center gap-0.5">
@@ -101,6 +155,7 @@ function AddTerminalCell() {
   const { terminals } = useTerminalStore();
   const { gridTerminalIds, openNewTerminalModal, addToGrid } = useAppStore();
   const [showPicker, setShowPicker] = useState(false);
+  const [dropOver, setDropOver] = useState(false);
 
   const availableTerminals = useMemo(() =>
     Array.from(terminals.values())
@@ -110,10 +165,43 @@ function AddTerminalCell() {
 
   return (
     <div
-      className="h-full flex flex-col items-center justify-center bg-[#131313] rounded ring-1 ring-border hover:ring-border-light transition-colors cursor-pointer group relative"
+      className={`h-full flex flex-col items-center justify-center bg-[#131313] rounded transition-colors cursor-pointer group relative ${
+        dropOver
+          ? 'ring-2 ring-accent-primary bg-accent-primary/5'
+          : 'ring-1 ring-border hover:ring-border-light'
+      }`}
       onClick={() => setShowPicker(true)}
+      onDragOver={(e) => {
+        if (isTerminalDrag(e)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
+      }}
+      onDragEnter={(e) => {
+        if (isTerminalDrag(e)) {
+          e.preventDefault();
+          setDropOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDropOver(false);
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDropOver(false);
+        const payload = getDragData(e);
+        if (payload && !gridTerminalIds.includes(payload.terminalId)) {
+          addToGrid(payload.terminalId);
+        }
+      }}
     >
-      <Plus size={24} className="text-border-light group-hover:text-text-tertiary transition-colors" />
+      {dropOver ? (
+        <span className="text-accent-primary text-[11px] font-medium">Drop here</span>
+      ) : (
+        <Plus size={24} className="text-border-light group-hover:text-text-tertiary transition-colors" />
+      )}
 
       {/* Terminal Picker Dropdown */}
       <AnimatePresence>
@@ -308,12 +396,17 @@ export function TerminalGrid() {
         </AnimatePresence>
       </div>
 
-      {/* Quick Tips */}
+      {/* Empty State */}
       {gridTerminalIds.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <Grid3X3 size={32} className="text-border mx-auto mb-3" />
-            <p className="text-text-tertiary text-[12px]">Click + to add terminals to the grid</p>
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06] flex items-center justify-center">
+              <Grid3X3 size={28} className="text-text-tertiary" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-text-secondary text-[13px] font-medium">No terminals in grid</p>
+              <p className="text-text-tertiary text-[12px]">Click any <Plus size={12} className="inline -mt-0.5" /> cell to add a terminal</p>
+            </div>
           </div>
         </div>
       )}

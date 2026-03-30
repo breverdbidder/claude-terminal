@@ -6,6 +6,9 @@ import { getVersion } from '@tauri-apps/api/app';
 import { useAppStore } from '../store/appStore';
 import { useUpdaterStore } from '../store/updaterStore';
 
+const isMac = navigator.platform.toUpperCase().includes('MAC');
+const mod = isMac ? 'Cmd' : 'Ctrl';
+
 interface UpdateCheckResult {
   current_version: string;
   latest_version: string;
@@ -13,7 +16,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession } = useAppStore();
+  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled } = useAppStore();
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -351,22 +354,55 @@ export function SettingsModal() {
             </div>
           </div>
 
+          {/* Analytics */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Analytics</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-text-primary text-[13px]">Anonymous usage analytics</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    Send anonymous app version and OS info to help improve ClaudeTerminal
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setTelemetryEnabled(!telemetryEnabled);
+                  }}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                    telemetryEnabled ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      telemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Keyboard Shortcuts */}
           <div>
             <h3 className="text-text-primary text-[13px] font-medium mb-2">Keyboard Shortcuts</h3>
             <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-1.5">
               {[
-                ['New Terminal', 'Ctrl+Shift+N'],
-                ['Close Terminal', 'Ctrl+W'],
-                ['Toggle Sidebar', 'Ctrl+B'],
+                ['New Terminal', `${mod}+Shift+N`],
+                ['Close Terminal', `${mod}+W`],
+                ['Toggle Sidebar', `${mod}+B`],
+                ['Command Palette', `${mod}+P`],
                 ['Toggle Hints', 'F1'],
-                ['Switch Tab', 'Ctrl+Tab'],
-                ['Copy / Interrupt', 'Ctrl+C'],
-                ['Paste', 'Ctrl+V'],
-                ['Toggle Grid View', 'Ctrl+G'],
-                ['Add to Grid', 'Ctrl+Shift+G'],
-                ['Search Terminal', 'Ctrl+Shift+F'],
-                ['Worktree Manager', 'Ctrl+Shift+W'],
+                ['Switch Tab', `${mod}+Tab`],
+                ['Copy / Interrupt', `${mod}+C`],
+                ['Paste', `${mod}+V`],
+                ['Toggle Grid View', `${mod}+G`],
+                ['Add to Grid', `${mod}+Shift+G`],
+                ['Split View', `${mod}+\\`],
+                ['Snippets', `${mod}+Shift+S`],
+                ['Search Terminal', `${mod}+Shift+F`],
+                ['Worktree Manager', `${mod}+Shift+W`],
+                ['Claude Config', 'F6'],
               ].map(([label, shortcut]) => (
                 <div key={label} className="flex justify-between text-[12px]">
                   <span className="text-text-secondary">{label}</span>

@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
@@ -11,14 +11,23 @@ import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
+import { SessionHistory } from './components/SessionHistory';
+import { SnippetsModal } from './components/SnippetsModal';
+import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
+import { WhatsNewModal } from './components/WhatsNewModal';
+import { ClaudeConfigModal } from './components/ClaudeConfigModal';
+import { OrchestrationPanel } from './components/OrchestrationPanel';
+import { SessionTimeline } from './components/SessionTimeline';
+import { MemoryEditor } from './components/MemoryEditor';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -62,6 +71,7 @@ interface SystemStatus {
 }
 
 interface SavedTerminalConfig {
+  id: string;
   label: string;
   nickname: string | null;
   working_directory: string;
@@ -71,8 +81,8 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, hintsOpen, changesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, notifyOnFinish, restoreSession, triggerChangesRefresh } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, createTerminal } = useTerminalStore();
+  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, telemetryEnabled, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
 
@@ -91,15 +101,56 @@ function App() {
     checkSetup();
   }, []);
 
+  // What's New check — runs after setup is confirmed
+  useEffect(() => {
+    if (showSetup !== false) return;
+
+    const checkWhatsNew = async () => {
+      try {
+        const currentVersion = await getVersion();
+        if (!lastSeenVersion) {
+          // Fresh install — just record the current version, no popup
+          setLastSeenVersion(currentVersion);
+        } else if (lastSeenVersion !== currentVersion) {
+          openWhatsNew();
+        }
+      } catch (err) {
+        console.error('Failed to check version for What\'s New:', err);
+      }
+    };
+
+    checkWhatsNew();
+  }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
+
+  // Telemetry heartbeat — fire once on startup
+  useEffect(() => {
+    if (showSetup !== false) return;
+    getVersion().then((appVersion) => {
+      invoke('send_telemetry_heartbeat', { enabled: telemetryEnabled, appVersion }).catch(() => {});
+    });
+  }, [showSetup]);
+
   useEffect(() => {
     const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
-      handleTerminalOutput(event.payload.id, new Uint8Array(event.payload.data));
+      const { id, data } = event.payload;
+      handleTerminalOutput(id, new Uint8Array(data));
+
+      // Detect loop mode from terminal output
+      try {
+        const text = new TextDecoder().decode(new Uint8Array(data));
+        const loopMatch = text.match(/loop\s+(\d+[smh])\s+(.+)/i);
+        if (loopMatch) {
+          setLoopMode(id, { interval: loopMatch[1], prompt: loopMatch[2] });
+        }
+      } catch {
+        // Ignore decode errors
+      }
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [handleTerminalOutput]);
+  }, [handleTerminalOutput, setLoopMode]);
 
   useEffect(() => {
     const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
@@ -116,47 +167,110 @@ function App() {
       if (notifyOnFinish) {
         notify('Terminal Finished', `${name} has finished running.`);
       }
+
+      // Auto-summarize the session
+      (async () => {
+        try {
+          // Check if we already have a summary
+          const existing = await invoke<string | null>('get_session_summary', { terminalId: id });
+          if (existing) {
+            setSessionSummary(id, existing);
+            return;
+          }
+
+          // Get the log path for this terminal
+          const sessions = await invoke<{ id: number; terminal_id: string; log_path: string | null }[]>('get_session_history');
+          const session = sessions.find(s => s.terminal_id === id);
+          if (!session?.log_path) return;
+
+          const summary = await invoke<string | null>('summarize_session', { logPath: session.log_path });
+          if (summary) {
+            await invoke('save_session_summary', { terminalId: id, summary });
+            setSessionSummary(id, summary);
+          }
+        } catch (err) {
+          console.error('Failed to summarize session:', err);
+        }
+      })();
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [notifyOnFinish, notify, updateTerminalStatus]);
+  }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary]);
 
-  // Restore previous session on startup
+  // Restore previous session on startup — show banner instead of silently restoring
   useEffect(() => {
     if (showSetup !== false) return;
     if (!restoreSession) return;
 
-    const restoreLastSession = async () => {
+    const checkLastSession = async () => {
       try {
         const configs = await invoke<SavedTerminalConfig[] | null>('get_last_session');
         if (!configs || configs.length === 0) return;
-
-        // Clear immediately to prevent double-restore on crash
-        await invoke('clear_last_session');
-
-        for (const config of configs) {
-          try {
-            await createTerminal(
-              config.label,
-              config.working_directory,
-              config.claude_args,
-              config.env_vars,
-              config.color_tag ?? undefined,
-              config.nickname ?? undefined
-            );
-          } catch (err) {
-            console.error('Failed to restore terminal:', config.label, err);
-          }
-        }
+        setPendingRestoreConfigs(configs);
+        setShowRestoreBanner(true);
       } catch (err) {
-        console.error('Failed to restore session:', err);
+        console.error('Failed to check last session:', err);
       }
     };
 
-    restoreLastSession();
+    checkLastSession();
   }, [showSetup]);
+
+  // Auto-save session every 30 seconds
+  useEffect(() => {
+    if (showSetup !== false) return;
+
+    const interval = setInterval(() => {
+      invoke('save_session_for_restore').catch((err) => {
+        console.error('Failed to auto-save session:', err);
+      });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [showSetup]);
+
+  const handleRestore = async () => {
+    if (!pendingRestoreConfigs) return;
+    await invoke('clear_last_session');
+
+    // Pre-fetch log content for all terminals in parallel
+    const logPromises = pendingRestoreConfigs.map(async (config) => {
+      if (!config.id) return null;
+      try {
+        return await invoke<string | null>('get_session_log', { terminalId: config.id });
+      } catch {
+        return null;
+      }
+    });
+    const logs = await Promise.all(logPromises);
+
+    for (let i = 0; i < pendingRestoreConfigs.length; i++) {
+      const config = pendingRestoreConfigs[i];
+      try {
+        await createTerminal(
+          config.label,
+          config.working_directory,
+          config.claude_args,
+          config.env_vars,
+          config.color_tag ?? undefined,
+          config.nickname ?? undefined,
+          logs[i] ?? undefined
+        );
+      } catch (err) {
+        console.error('Failed to restore terminal:', config.label, err);
+      }
+    }
+    setShowRestoreBanner(false);
+    setPendingRestoreConfigs(null);
+  };
+
+  const handleDismissRestore = async () => {
+    await invoke('clear_last_session');
+    setShowRestoreBanner(false);
+    setPendingRestoreConfigs(null);
+  };
 
   // Show loading while checking
   if (showSetup === null) {
@@ -178,6 +292,40 @@ function App() {
       {!showSetup && (
         <>
           <AutoUpdater />
+
+          {/* Restore Banner (F3) */}
+          <AnimatePresence>
+            {showRestoreBanner && pendingRestoreConfigs && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="bg-accent-primary/10 border-b border-accent-primary/20 overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <p className="text-text-primary text-[13px]">
+                    Restore {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''} from your previous session?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRestore}
+                      className="bg-accent-primary hover:bg-accent-secondary text-white px-3 py-1 rounded-md text-[12px] font-medium transition-colors"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      onClick={handleDismissRestore}
+                      className="text-text-secondary hover:text-text-primary px-3 py-1 rounded-md text-[12px] transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <TitleBar />
 
           <div className="flex-1 flex overflow-hidden">
@@ -208,6 +356,17 @@ function App() {
             </AnimatePresence>
 
             <AnimatePresence mode="wait">
+              {orchestrationOpen && (
+                <div
+                  className="h-full overflow-hidden transition-all duration-150 ease-out"
+                  style={{ width: 320 }}
+                >
+                  <OrchestrationPanel />
+                </div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
               {hintsOpen && (
                 <div
                   className="h-full overflow-hidden transition-all duration-150 ease-out"
@@ -225,7 +384,14 @@ function App() {
             {newTerminalModalOpen && <NewTerminalModal />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
+            {sessionHistoryOpen && <SessionHistory />}
+            {snippetsModalOpen && <SnippetsModal />}
+            {whatsNewOpen && <WhatsNewModal />}
+            {claudeConfigOpen && <ClaudeConfigModal />}
+            {sessionTimelineOpen && <SessionTimeline />}
+            {memoryEditorOpen && <MemoryEditor />}
           </AnimatePresence>
+          {commandPaletteOpen && <CommandPalette />}
         </>
       )}
     </div>

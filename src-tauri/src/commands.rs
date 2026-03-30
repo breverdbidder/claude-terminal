@@ -1,4 +1,5 @@
 use crate::config::{ConfigProfile, HintCategory};
+use crate::database::{SessionHistoryEntry, Snippet};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,20 +24,49 @@ pub async fn create_terminal(
 ) -> Result<crate::terminal::TerminalConfig, String> {
     let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(100);
 
+    // Compute log file path
+    let log_path = {
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
+        logs_dir.join(filename).to_string_lossy().to_string()
+    };
+
     let config = {
         let mut terminals = state.terminals.lock().await;
         terminals.create_terminal(
-            request.label,
+            request.label.clone(),
             request.working_directory,
             request.claude_args,
             request.env_vars,
             request.color_tag,
             request.nickname,
             tx,
+            Some(log_path.clone()),
         )?
     };
 
+    // Insert session history entry
+    {
+        let db = state.db.lock().await;
+        if let Err(e) = db.insert_session_history(
+            &config.id,
+            &config.label,
+            &config.created_at.to_rfc3339(),
+            Some(&log_path),
+        ) {
+            eprintln!("Failed to insert session history: {}", e);
+        }
+    }
+
     let terminal_id = config.id.clone();
+    let db_arc = state.db.clone();
+    let terminals_arc = state.terminals.clone();
 
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -50,7 +80,23 @@ pub async fn create_terminal(
             }
         }
 
-        // Terminal process exited — notify the frontend
+        // Terminal process exited — update status, session history, and notify frontend
+        // Note: the terminal may have already been removed by close_terminal(), so ignore errors
+        {
+            if let Ok(mut manager) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                terminals_arc.lock(),
+            ).await {
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
+        }
+        {
+            let db = db_arc.lock().await;
+            if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
+                eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
+            }
+        }
+
         if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({
             "id": terminal_id,
         })) {
@@ -61,12 +107,22 @@ pub async fn create_terminal(
     Ok(config)
 }
 
+/// Maximum size for a single write to terminal (64 KB)
+const MAX_TERMINAL_WRITE_SIZE: usize = 65_536;
+
 #[command]
 pub async fn write_to_terminal(
     state: State<'_, AppState>,
     id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
+    if data.len() > MAX_TERMINAL_WRITE_SIZE {
+        return Err(format!(
+            "Write payload too large ({} bytes). Maximum is {} bytes.",
+            data.len(),
+            MAX_TERMINAL_WRITE_SIZE
+        ));
+    }
     let mut terminals = state.terminals.lock().await;
     terminals.write(&id, &data)
 }
@@ -233,6 +289,42 @@ pub struct SystemStatus {
     pub claude_version: Option<String>,
 }
 
+/// Shells that are allowed when reading `$SHELL` on non-Windows platforms.
+const VALID_SHELLS: &[&str] = &[
+    "/bin/bash",
+    "/bin/sh",
+    "/bin/zsh",
+    "/bin/fish",
+    "/bin/dash",
+    "/usr/bin/bash",
+    "/usr/bin/sh",
+    "/usr/bin/zsh",
+    "/usr/bin/fish",
+    "/usr/bin/dash",
+    "/usr/local/bin/bash",
+    "/usr/local/bin/zsh",
+    "/usr/local/bin/fish",
+    "/opt/homebrew/bin/bash",
+    "/opt/homebrew/bin/zsh",
+    "/opt/homebrew/bin/fish",
+];
+
+/// Shell-escape a single argument by wrapping it in single quotes.
+/// Any embedded single quotes are escaped as `'\''`.
+fn shell_escape_arg(arg: &str) -> String {
+    let mut escaped = String::with_capacity(arg.len() + 2);
+    escaped.push('\'');
+    for ch in arg.chars() {
+        if ch == '\'' {
+            escaped.push_str("'\\''");
+        } else {
+            escaped.push(ch);
+        }
+    }
+    escaped.push('\'');
+    escaped
+}
+
 /// Creates a Command that works cross-platform.
 /// On Windows, wraps the command with `cmd /C` so that `.cmd`/`.bat` scripts
 /// (like `npm.cmd`, `claude.cmd`) are resolved correctly.
@@ -251,10 +343,20 @@ fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
         }
         cmd
     } else {
-        let mut cmd = std::process::Command::new(program);
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        // Validate $SHELL against allowlist to prevent arbitrary binary execution
+        let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+            shell
+        } else {
+            "/bin/bash".to_string()
+        };
+        let mut full_cmd = shell_escape_arg(program);
         for arg in args {
-            cmd.arg(arg);
+            full_cmd.push(' ');
+            full_cmd.push_str(&shell_escape_arg(arg));
         }
+        let mut cmd = std::process::Command::new(shell);
+        cmd.arg("-lc").arg(&full_cmd);
         cmd
     }
 }
@@ -324,6 +426,7 @@ pub async fn send_notification(title: String, body: String) -> Result<(), String
             .summary(&title)
             .body(&body)
             .show()
+            .map(|_| ())
             .map_err(|e| e.to_string())
     })
     .await
@@ -332,6 +435,9 @@ pub async fn send_notification(title: String, body: String) -> Result<(), String
 
 #[command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only HTTP and HTTPS URLs are allowed".to_string());
+    }
     open::that(&url).map_err(|e| e.to_string())
 }
 
@@ -763,4 +869,719 @@ pub async fn remove_worktree(
     }
 
     Ok(())
+}
+
+// Session history commands
+
+#[command]
+pub async fn get_session_history(
+    state: State<'_, AppState>,
+) -> Result<Vec<SessionHistoryEntry>, String> {
+    let db = state.db.lock().await;
+    db.get_session_history()
+}
+
+#[command]
+pub async fn read_log_file(path: String) -> Result<String, String> {
+    // Validate path is under the logs directory
+    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+        .ok_or("Failed to get project directories")?
+        .data_dir()
+        .to_path_buf();
+    let logs_dir = data_dir.join("logs");
+    let canonical_path = std::path::Path::new(&path)
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
+    let canonical_logs = logs_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+    if !canonical_path.starts_with(&canonical_logs) {
+        return Err("Access denied: path is not under logs directory".to_string());
+    }
+    std::fs::read_to_string(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))
+}
+
+#[command]
+pub async fn delete_session_history(
+    state: State<'_, AppState>,
+    id: i64,
+    log_path: Option<String>,
+) -> Result<(), String> {
+    // Delete log file if it exists, but only if it's under the logs directory
+    if let Some(ref path) = log_path {
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
+        if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
+            if let Ok(canonical_logs) = logs_dir.canonicalize() {
+                if canonical_path.starts_with(&canonical_logs) {
+                    let _ = std::fs::remove_file(&canonical_path);
+                }
+            }
+        }
+    }
+    let db = state.db.lock().await;
+    db.delete_session_history_entry(id)
+}
+
+/// Retrieve the log content for a terminal from a previous session.
+/// Looks up the most recent session_history entry for the given terminal_id,
+/// reads the log file, and returns its content (capped at 512 KB).
+#[command]
+pub async fn get_session_log(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Option<String>, String> {
+    let log_path = {
+        let db = state.db.lock().await;
+        db.get_log_path_for_terminal(&terminal_id)?
+    };
+
+    let path = match log_path {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    // Validate path is under the logs directory
+    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+        .ok_or("Failed to get project directories")?
+        .data_dir()
+        .to_path_buf();
+    let logs_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir)
+        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
+    let canonical_path = match std::path::Path::new(&path).canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Ok(None), // Log file may have been deleted
+    };
+    let canonical_logs = logs_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+    if !canonical_path.starts_with(&canonical_logs) {
+        return Ok(None);
+    }
+
+    // Read up to 512 KB
+    match std::fs::read(&canonical_path) {
+        Ok(bytes) => {
+            let max_bytes = 512 * 1024;
+            let truncated = if bytes.len() > max_bytes {
+                &bytes[bytes.len() - max_bytes..]
+            } else {
+                &bytes
+            };
+            Ok(Some(String::from_utf8_lossy(truncated).into_owned()))
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+// Snippet commands
+
+#[command]
+pub async fn save_snippet(
+    state: State<'_, AppState>,
+    snippet: Snippet,
+) -> Result<(), String> {
+    let db = state.db.lock().await;
+    db.save_snippet(&snippet)
+}
+
+#[command]
+pub async fn get_snippets(state: State<'_, AppState>) -> Result<Vec<Snippet>, String> {
+    let db = state.db.lock().await;
+    db.get_snippets()
+}
+
+#[command]
+pub async fn delete_snippet(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().await;
+    db.delete_snippet(&id)
+}
+
+// Claude Global Configuration (~/.claude/)
+
+/// Returns the path to the user's ~/.claude directory
+fn get_claude_dir() -> Result<std::path::PathBuf, String> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+    } else {
+        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
+    };
+    Ok(std::path::Path::new(&home).join(".claude"))
+}
+
+/// Validates that a filename is safe (no path traversal)
+fn validate_filename(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Filename cannot be empty".to_string());
+    }
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains('\0') {
+        return Err("Invalid filename".to_string());
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn read_claude_settings() -> Result<String, String> {
+    let settings_path = get_claude_dir()?.join("settings.json");
+    if !settings_path.exists() {
+        return Ok("{}".to_string());
+    }
+    std::fs::read_to_string(&settings_path)
+        .map_err(|e| format!("Failed to read settings.json: {}", e))
+}
+
+#[command]
+pub async fn write_claude_settings(content: String) -> Result<(), String> {
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    let claude_dir = get_claude_dir()?;
+    std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    std::fs::write(claude_dir.join("settings.json"), &content)
+        .map_err(|e| format!("Failed to write settings.json: {}", e))
+}
+
+#[command]
+pub async fn list_claude_agents() -> Result<Vec<String>, String> {
+    let agents_dir = get_claude_dir()?.join("agents");
+    if !agents_dir.exists() {
+        return Ok(vec![]);
+    }
+    let entries = std::fs::read_dir(&agents_dir).map_err(|e| e.to_string())?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+#[command]
+pub async fn read_claude_agent(name: String) -> Result<String, String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("agents").join(&name);
+    if !path.exists() {
+        return Err(format!("Agent file not found: {}", name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn write_claude_agent(name: String, content: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let agents_dir = get_claude_dir()?.join("agents");
+    std::fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
+    std::fs::write(agents_dir.join(&name), &content).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn delete_claude_agent(name: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("agents").join(&name);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn list_claude_commands() -> Result<Vec<String>, String> {
+    let commands_dir = get_claude_dir()?.join("commands");
+    if !commands_dir.exists() {
+        return Ok(vec![]);
+    }
+    let entries = std::fs::read_dir(&commands_dir).map_err(|e| e.to_string())?;
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+#[command]
+pub async fn read_claude_command(name: String) -> Result<String, String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("commands").join(&name);
+    if !path.exists() {
+        return Err(format!("Command file not found: {}", name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn write_claude_command(name: String, content: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let commands_dir = get_claude_dir()?.join("commands");
+    std::fs::create_dir_all(&commands_dir).map_err(|e| e.to_string())?;
+    std::fs::write(commands_dir.join(&name), &content).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn delete_claude_command(name: String) -> Result<(), String> {
+    validate_filename(&name)?;
+    let path = get_claude_dir()?.join("commands").join(&name);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Telemetry commands
+
+#[command]
+pub async fn get_installation_id(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.lock().await;
+    db.get_or_create_installation_id()
+}
+
+#[command]
+pub async fn send_telemetry_heartbeat(
+    state: State<'_, AppState>,
+    enabled: bool,
+    app_version: String,
+) -> Result<(), String> {
+    if !enabled {
+        return Ok(());
+    }
+    let installation_id = {
+        let db = state.db.lock().await;
+        db.get_or_create_installation_id()?
+    };
+    tokio::spawn(crate::telemetry::send_heartbeat(installation_id, app_version));
+    Ok(())
+}
+
+// Session summary commands
+
+#[command]
+pub async fn summarize_session(log_path: String) -> Result<Option<String>, String> {
+    // Validate path is under the logs directory
+    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+        .ok_or("Failed to get project directories")?
+        .data_dir()
+        .to_path_buf();
+    let logs_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
+    let canonical_path = match std::path::Path::new(&log_path).canonicalize() {
+        Ok(p) => p,
+        Err(_) => return Ok(None),
+    };
+    let canonical_logs = logs_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+    if !canonical_path.starts_with(&canonical_logs) {
+        return Err("Access denied: path is not under logs directory".to_string());
+    }
+
+    // Read log file content (capped at 100KB)
+    let bytes = match std::fs::read(&canonical_path) {
+        Ok(b) => b,
+        Err(_) => return Ok(None),
+    };
+    let max_bytes = 100 * 1024;
+    let truncated = if bytes.len() > max_bytes {
+        &bytes[bytes.len() - max_bytes..]
+    } else {
+        &bytes
+    };
+    let log_content = String::from_utf8_lossy(truncated);
+
+    // Strip ANSI escape sequences
+    let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
+        .unwrap();
+    let clean_content = ansi_re.replace_all(&log_content, "").to_string();
+
+    if clean_content.trim().is_empty() {
+        return Ok(None);
+    }
+
+    // Run claude -p to summarize
+    let mut cmd = shell_command("claude", &["-p", "--model", "haiku", "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise."]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(_) => return Ok(None), // Claude Code not available
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(clean_content.as_bytes());
+    }
+
+    let output = match child.wait_with_output() {
+        Ok(o) => o,
+        Err(_) => return Ok(None),
+    };
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let summary = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if summary.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(summary))
+}
+
+#[command]
+pub async fn save_session_summary(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    summary: String,
+) -> Result<(), String> {
+    let db = state.db.lock().await;
+    db.save_session_summary(&terminal_id, &summary)
+}
+
+#[command]
+pub async fn get_session_summary(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Option<String>, String> {
+    let db = state.db.lock().await;
+    db.get_session_summary(&terminal_id)
+}
+
+// Team tasks command
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskInfo {
+    pub id: String,
+    pub subject: String,
+    pub status: String,
+    pub owner: Option<String>,
+    pub blocked_by: Vec<String>,
+    pub active_form: Option<String>,
+}
+
+#[command]
+pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> {
+    // Validate team_name doesn't contain path traversal
+    if team_name.contains('/') || team_name.contains('\\') || team_name.contains("..") || team_name.contains('\0') {
+        return Err("Invalid team name".to_string());
+    }
+
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+    } else {
+        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
+    };
+
+    let tasks_dir = std::path::Path::new(&home)
+        .join(".claude")
+        .join("tasks")
+        .join(&team_name);
+
+    if !tasks_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
+    let mut tasks = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        // Skip .highwatermark and non-JSON files
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || !name.ends_with(".json") {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let val: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let subject = val.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string();
+        let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
+        let active_form = val.get("activeForm").and_then(|v| v.as_str()).map(String::from);
+        let blocked_by: Vec<String> = val.get("blockedBy")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        if !id.is_empty() {
+            tasks.push(TaskInfo {
+                id,
+                subject,
+                status,
+                owner,
+                blocked_by,
+                active_form,
+            });
+        }
+    }
+
+    // Sort by id
+    tasks.sort_by(|a, b| a.id.cmp(&b.id));
+
+    Ok(tasks)
+}
+
+// Memory & CLAUDE.md commands
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryFileInfo {
+    pub path: String,
+    pub name: String,
+    pub project: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeMdInfo {
+    pub path: String,
+    pub scope: String,
+    pub project_name: Option<String>,
+}
+
+/// Validates that a path is under ~/.claude/
+fn validate_claude_path(path: &str) -> Result<(), String> {
+    let claude_dir = get_claude_dir()?;
+    let canonical_claude = claude_dir
+        .canonicalize()
+        .unwrap_or_else(|_| claude_dir.clone());
+    let target = std::path::Path::new(path);
+    let canonical_target = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
+    if !canonical_target.starts_with(&canonical_claude) {
+        return Err("Access denied: path is not under ~/.claude/".to_string());
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<MemoryFileInfo>, String> {
+    let claude_dir = get_claude_dir()?;
+    let projects_dir = claude_dir.join("projects");
+
+    if !projects_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut files = Vec::new();
+
+    let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
+        let memory_dir = project_dir.join("memory");
+        if !memory_dir.exists() || !memory_dir.is_dir() {
+            return;
+        }
+        let project_name = project_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        if let Ok(entries) = std::fs::read_dir(&memory_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    files.push(MemoryFileInfo {
+                        path: path.to_string_lossy().to_string(),
+                        name,
+                        project: project_name.clone(),
+                        size,
+                    });
+                }
+            }
+        }
+    };
+
+    if let Some(ref specific_project) = project_path {
+        // Scan only the specific project
+        let target = std::path::Path::new(specific_project);
+        if target.exists() && target.is_dir() {
+            scan_project(target, &mut files);
+        }
+    } else {
+        // Scan all projects
+        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_project(&path, &mut files);
+                }
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+#[command]
+pub async fn read_memory_file(path: String) -> Result<String, String> {
+    validate_claude_path(&path)?;
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read memory file: {}", e))
+}
+
+#[command]
+pub async fn write_memory_file(path: String, content: String) -> Result<(), String> {
+    validate_claude_path(&path)?;
+    // Ensure parent directory exists
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, &content).map_err(|e| format!("Failed to write memory file: {}", e))
+}
+
+#[command]
+pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
+    let mut files = Vec::new();
+    let claude_dir = get_claude_dir()?;
+
+    // Global ~/.claude/CLAUDE.md
+    let global_md = claude_dir.join("CLAUDE.md");
+    if global_md.exists() {
+        files.push(ClaudeMdInfo {
+            path: global_md.to_string_lossy().to_string(),
+            scope: "global".to_string(),
+            project_name: None,
+        });
+    }
+
+    // Project-level CLAUDE.md files in ~/.claude/projects/*/
+    let projects_dir = claude_dir.join("projects");
+    if projects_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let md_path = path.join("CLAUDE.md");
+                    if md_path.exists() {
+                        let project_name = entry.file_name().to_string_lossy().to_string();
+                        files.push(ClaudeMdInfo {
+                            path: md_path.to_string_lossy().to_string(),
+                            scope: "project".to_string(),
+                            project_name: Some(project_name),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+// Agent Teams (multi-agent orchestration)
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMember {
+    pub agent_id: String,
+    pub name: String,
+    pub agent_type: String,
+    pub model: Option<String>,
+    pub joined_at: Option<u64>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamConfig {
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: Option<u64>,
+    pub lead_agent_id: Option<String>,
+    pub members: Vec<TeamMember>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamInfo {
+    pub dir_name: String,
+    pub config: TeamConfig,
+    pub task_count: Option<u32>,
+}
+
+#[command]
+pub async fn get_active_teams() -> Result<Vec<TeamInfo>, String> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+    } else {
+        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
+    };
+
+    let teams_dir = std::path::Path::new(&home).join(".claude").join("teams");
+    if !teams_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let entries = std::fs::read_dir(&teams_dir).map_err(|e| e.to_string())?;
+    let mut teams = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let config_path = path.join("config.json");
+        if !config_path.exists() {
+            continue;
+        }
+
+        let config_str = match std::fs::read_to_string(&config_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let config: TeamConfig = match serde_json::from_str(&config_str) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let dir_name = entry.file_name().to_string_lossy().to_string();
+
+        // Read task count from .highwatermark
+        let tasks_dir = std::path::Path::new(&home)
+            .join(".claude")
+            .join("tasks")
+            .join(&dir_name);
+        let hwm_path = tasks_dir.join(".highwatermark");
+        let task_count = std::fs::read_to_string(&hwm_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok());
+
+        teams.push(TeamInfo {
+            dir_name,
+            config,
+            task_count,
+        });
+    }
+
+    Ok(teams)
 }

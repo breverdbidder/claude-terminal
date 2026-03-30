@@ -55,11 +55,19 @@ export function ProfileModal() {
     });
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSaveProfile = async () => {
     if (!selectedProfile) return;
-    await invoke('save_profile', { profile: selectedProfile });
-    await loadProfiles();
-    setIsCreating(false);
+    setSaveError(null);
+    try {
+      await invoke('save_profile', { profile: selectedProfile });
+      await loadProfiles();
+      setIsCreating(false);
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      setSaveError(String(err));
+    }
   };
 
   const handleBrowseDirectory = async () => {
@@ -79,10 +87,16 @@ export function ProfileModal() {
   };
 
   const handleDeleteProfile = async (id: string) => {
-    await invoke('delete_profile', { id });
-    await loadProfiles();
-    if (selectedProfile?.id === id) {
-      setSelectedProfile(null);
+    setSaveError(null);
+    try {
+      await invoke('delete_profile', { id });
+      await loadProfiles();
+      if (selectedProfile?.id === id) {
+        setSelectedProfile(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete profile:', err);
+      setSaveError(String(err));
     }
   };
 
@@ -268,6 +282,12 @@ export function ProfileModal() {
                   />
                   <label htmlFor="is_default" className="text-text-primary text-[13px]">Set as default profile</label>
                 </div>
+
+                {saveError && (
+                  <div className="p-3 rounded-md bg-error/5 ring-1 ring-error/20">
+                    <p className="text-error text-[12px]">{saveError}</p>
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-4 border-t border-border">
                   <button

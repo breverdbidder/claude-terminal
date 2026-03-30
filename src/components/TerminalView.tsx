@@ -3,8 +3,10 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
+import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalViewProps {
@@ -59,7 +61,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      invoke('open_external_url', { url: uri }).catch((err) => {
+        console.error('Failed to open URL:', err);
+      });
+    });
     const searchAddon = new SearchAddon();
 
     terminal.loadAddon(fitAddon);
@@ -91,23 +97,30 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return true;
       }
 
+      // Ctrl+V: Let browser handle paste natively — fires paste event
+      // on xterm's internal textarea, which xterm processes via onData.
+      // This is more reliable than the async Clipboard API which can fail
+      // silently due to focus/permission issues.
       if (isCtrl && e.key === 'v') {
+        return false;
+      }
+
+      // Ctrl+Z: Send suspend/EOF signal to terminal (prevent browser undo)
+      if (isCtrl && !e.shiftKey && e.key === 'z') {
         if (e.type === 'keydown') {
           e.preventDefault();
-          navigator.clipboard.readText().then((text) => {
-            if (text) {
-              writeToTerminal(terminalId, text);
-            }
-          });
+          writeToTerminal(terminalId, '\x1a');
         }
-        return false; // Block both keydown and keyup from xterm
+        return false;
       }
 
       return true;
     });
 
     terminal.onData((data) => {
-      writeToTerminal(terminalId, data);
+      writeToTerminal(terminalId, data).catch((err) => {
+        console.error(`Failed to write to terminal ${terminalId}:`, err);
+      });
     });
 
     const resizeObserver = new ResizeObserver(() => {
@@ -126,7 +139,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   }, [terminalId, instance, writeToTerminal, resizeTerminal, setXterm, toggleSearch]);
 
   return (
-    <div className="h-full w-full bg-bg-primary relative">
+    <div className="h-full w-full bg-bg-primary relative flex flex-col">
       <TerminalSearch
         searchAddon={searchAddonRef.current}
         visible={searchVisible}
@@ -134,8 +147,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       />
       <div
         ref={containerRef}
-        className="h-full w-full"
+        className="flex-1 min-h-0 w-full"
       />
+      <TerminalStatusBar terminalId={terminalId} />
     </div>
   );
 }

@@ -32,6 +32,38 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openNewTerminalModal();
       }
 
+      // Command Palette: Ctrl+P
+      if (ctrl && e.key === 'p') {
+        e.preventDefault();
+        useAppStore.getState().toggleCommandPalette();
+      }
+
+      // Snippets: Ctrl+Shift+S
+      if (ctrl && shift && e.key === 'S') {
+        e.preventDefault();
+        useAppStore.getState().openSnippetsModal();
+      }
+
+      // Split View: Ctrl+\
+      if (ctrl && e.key === '\\') {
+        e.preventDefault();
+        const { splitMode, clearSplit, setSplitTerminals, setSplitMode } = useAppStore.getState();
+        if (splitMode) {
+          clearSplit();
+        } else {
+          const terminals = terminalsRef.current;
+          const activeId = activeIdRef.current;
+          const terminalIds = Array.from(terminals.keys());
+          if (terminalIds.length >= 2 && activeId) {
+            const otherIds = terminalIds.filter(id => id !== activeId);
+            if (otherIds.length > 0) {
+              setSplitTerminals([activeId, otherIds[0]]);
+              setSplitMode(true);
+            }
+          }
+        }
+      }
+
       // Ctrl+Shift+F is handled inside TerminalView for search
 
       if (ctrl && e.key === 'b') {
@@ -58,6 +90,39 @@ export function useKeyboardShortcuts() {
       if (e.key === 'F2') {
         e.preventDefault();
         useAppStore.getState().toggleChanges();
+      }
+
+      if (e.key === 'F4') {
+        e.preventDefault();
+        useAppStore.getState().toggleOrchestration();
+      }
+
+      // Claude Config: F6
+      if (e.key === 'F6') {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (state.claudeConfigOpen) {
+          state.closeClaudeConfig();
+        } else {
+          state.openClaudeConfig();
+        }
+      }
+
+      // Session Timeline: F7
+      if (e.key === 'F7') {
+        e.preventDefault();
+        useAppStore.getState().toggleSessionTimeline();
+      }
+
+      // Memory Editor: F8
+      if (e.key === 'F8') {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (state.memoryEditorOpen) {
+          state.closeMemoryEditor();
+        } else {
+          state.openMemoryEditor();
+        }
       }
 
       // Toggle Grid Mode: Ctrl+G

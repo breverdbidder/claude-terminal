@@ -4,7 +4,7 @@
 
 **ClaudeTerminal** is a Windows desktop application for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation.
 
-Current version: **1.6.0**
+Current version: **1.17.3**
 
 ## Tech Stack
 
@@ -39,6 +39,8 @@ src/                          # React frontend
     HintsPanel.tsx            # Claude Code command hints reference
     SetupWizard.tsx           # First-run setup (Node.js/Claude Code detection)
     AutoUpdater.tsx           # In-app update UI
+    WhatsNewModal.tsx         # Post-update release notes popup
+  changelog.json              # Structured release notes data for What's New modal
   store/
     terminalStore.ts          # Terminal instances state (Map<id, {config, xterm}>)
     appStore.ts               # UI state (sidebar, grid, modals, settings)

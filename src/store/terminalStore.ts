@@ -16,9 +16,20 @@ export interface TerminalConfig {
   color_tag: string | null;
 }
 
+export interface LoopInfo {
+  interval: string;
+  prompt: string;
+}
+
 interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
+  restoredOutput?: string;
+  model?: string;
+  effort?: string;
+  isWorktree: boolean;
+  loopInfo?: LoopInfo | null;
+  sessionSummary?: string | null;
 }
 
 interface TerminalState {
@@ -33,7 +44,8 @@ interface TerminalState {
     claudeArgs: string[],
     envVars: Record<string, string>,
     colorTag?: string,
-    nickname?: string
+    nickname?: string,
+    restoredOutput?: string
   ) => Promise<string>;
   closeTerminal: (id: string) => Promise<void>;
   setActiveTerminal: (id: string) => void;
@@ -44,6 +56,8 @@ interface TerminalState {
   setXterm: (id: string, xterm: Terminal) => void;
   handleTerminalOutput: (id: string, data: Uint8Array) => void;
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
+  setLoopMode: (id: string, info: LoopInfo | null) => void;
+  setSessionSummary: (id: string, summary: string | null) => void;
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
@@ -56,9 +70,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   unreadTerminalIds: new Set(),
   gitInfoCache: new Map(),
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
-      console.log('Creating terminal with:', { label, workingDirectory, claudeArgs, envVars, colorTag, nickname });
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -69,11 +82,22 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nickname: nickname || null,
         },
       });
-      console.log('Terminal created:', config);
+      // Parse model, effort, worktree from claude_args
+      let model: string | undefined;
+      let effort: string | undefined;
+      const isWorktree = claudeArgs.includes('--worktree');
+      for (let i = 0; i < claudeArgs.length; i++) {
+        if (claudeArgs[i] === '--model' && i + 1 < claudeArgs.length) {
+          model = claudeArgs[i + 1];
+        }
+        if (claudeArgs[i] === '--effort' && i + 1 < claudeArgs.length) {
+          effort = claudeArgs[i + 1];
+        }
+      }
 
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        newTerminals.set(config.id, { config, xterm: null });
+        newTerminals.set(config.id, { config, xterm: null, restoredOutput, model, effort, isWorktree });
         return {
           terminals: newTerminals,
           activeTerminalId: config.id,
@@ -161,11 +185,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setXterm: (id, xterm) => {
+    const { terminals } = get();
+    const instance = terminals.get(id);
+
+    // Write restored session output before any live output
+    if (instance?.restoredOutput) {
+      const lines = instance.restoredOutput.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      xterm.write('\x1b[90m─── Previous session output ───\x1b[0m\r\n\r\n');
+      xterm.write(lines.replace(/\n/g, '\r\n'));
+      xterm.write('\r\n\r\n\x1b[90m─── Session restored ───\x1b[0m\r\n\r\n');
+    }
+
     set((state) => {
       const newTerminals = new Map(state.terminals);
-      const instance = newTerminals.get(id);
-      if (instance) {
-        instance.xterm = xterm;
+      const inst = newTerminals.get(id);
+      if (inst) {
+        inst.xterm = xterm;
+        delete inst.restoredOutput; // Free memory
       }
       return { terminals: newTerminals };
     });
@@ -192,6 +228,28 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const instance = newTerminals.get(id);
       if (instance) {
         instance.config.status = status;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setLoopMode: (id, info) => {
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.loopInfo = info;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setSessionSummary: (id, summary) => {
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.sessionSummary = summary;
       }
       return { terminals: newTerminals };
     });

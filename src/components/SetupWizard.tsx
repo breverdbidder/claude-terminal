@@ -32,7 +32,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       setStatus(result);
 
       if (result.claude_installed) {
-        setTimeout(onComplete, 1500);
+        setTimeout(() => {
+          if (mountedRef.current) onComplete();
+        }, 1500);
       }
     } catch (error) {
       console.error('Failed to check requirements:', error);

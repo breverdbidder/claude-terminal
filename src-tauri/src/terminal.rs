@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -30,9 +31,11 @@ pub enum TerminalStatus {
 
 pub struct Terminal {
     pub config: TerminalConfig,
-    #[allow(dead_code)]
+    /// Kept alive to maintain the PTY connection
     pub pty_pair: PtyPair,
     pub writer: Box<dyn Write + Send>,
+    /// Handle to the reader thread for cleanup on close
+    pub reader_handle: Option<JoinHandle<()>>,
 }
 
 pub struct TerminalManager {
@@ -46,6 +49,21 @@ impl TerminalManager {
         }
     }
 
+    /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
+    const SHELL_METACHARACTERS: &'static [char] = &[
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+        '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
+    ];
+
+    /// Environment variable names that must not be overridden by user profiles
+    const BLOCKED_ENV_VARS: &'static [&'static str] = &[
+        "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
+        "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+        "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
+        "ELECTRON_RUN_AS_NODE",
+        "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    ];
+
     pub fn create_terminal(
         &mut self,
         label: String,
@@ -55,7 +73,27 @@ impl TerminalManager {
         color_tag: Option<String>,
         nickname: Option<String>,
         tx: mpsc::Sender<(String, Vec<u8>)>,
+        log_file_path: Option<String>,
     ) -> Result<TerminalConfig, String> {
+        // Validate claude_args: reject any argument containing shell metacharacters
+        for arg in &claude_args {
+            if arg.contains(Self::SHELL_METACHARACTERS) {
+                return Err(format!(
+                    "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",
+                    arg
+                ));
+            }
+        }
+
+        // Filter out blocked environment variables
+        let safe_env_vars: HashMap<String, String> = env_vars
+            .into_iter()
+            .filter(|(key, _)| {
+                let upper = key.to_uppercase();
+                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
+            })
+            .collect();
+
         let pty_system = native_pty_system();
 
         let pty_pair = pty_system
@@ -82,19 +120,40 @@ impl TerminalManager {
 
         #[cfg(not(target_os = "windows"))]
         let mut cmd = {
+            /// Shells allowed for PTY spawning on non-Windows platforms.
+            const VALID_SHELLS: &[&str] = &[
+                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
+                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
+                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
+                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+            ];
+
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-            // Validate shell path exists to prevent execution of arbitrary binaries
-            if !std::path::Path::new(&shell).exists() {
-                return Err(format!("Shell not found: {}", shell));
-            }
-            let mut c = CommandBuilder::new(shell);
-            // Pass each argument individually to prevent command injection
-            // (instead of joining into a single string that gets shell-interpreted)
-            c.arg("-ic");
-            c.arg("claude");
+            // Validate $SHELL against allowlist
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+                shell
+            } else {
+                "/bin/bash".to_string()
+            };
+            let mut c = CommandBuilder::new(&shell);
+            // Build command string with shell-escaped args as defense-in-depth
+            // (args are already validated against metacharacters above)
+            let mut full_cmd = "claude".to_string();
             for arg in &claude_args {
-                c.arg(arg);
+                full_cmd.push(' ');
+                // Single-quote wrap each arg; escape embedded single quotes
+                full_cmd.push('\'');
+                for ch in arg.chars() {
+                    if ch == '\'' {
+                        full_cmd.push_str("'\\''");
+                    } else {
+                        full_cmd.push(ch);
+                    }
+                }
+                full_cmd.push('\'');
             }
+            c.arg("-lc");
+            c.arg(&full_cmd);
             c
         };
 
@@ -103,8 +162,8 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        // Set environment variables
-        for (key, value) in &env_vars {
+        // Set environment variables (blocked keys already filtered out)
+        for (key, value) in &safe_env_vars {
             cmd.env(key, value);
         }
 
@@ -120,7 +179,7 @@ impl TerminalManager {
             profile_id: None,
             working_directory,
             claude_args,
-            env_vars,
+            env_vars: safe_env_vars,
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag,
@@ -133,20 +192,29 @@ impl TerminalManager {
 
         // Spawn reader thread
         let terminal_id = id.clone();
-        std::thread::spawn(move || {
+        let reader_handle = std::thread::spawn(move || {
             let mut buf = [0u8; 8192];
+            let mut log_file = log_file_path.and_then(|path| {
+                std::fs::File::create(&path)
+                    .map_err(|e| eprintln!("Failed to create log file: {}", e))
+                    .ok()
+            });
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
                         let data = buf[..n].to_vec();
+                        // Write ANSI-stripped output to log file
+                        if let Some(ref mut file) = log_file {
+                            let stripped = strip_ansi_escapes::strip(&data);
+                            let _ = std::io::Write::write_all(file, &stripped);
+                        }
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() {
                             break;
                         }
                     }
                     Err(e) => {
                         eprintln!("Error reading from pty: {}", e);
-                        // Send error message to frontend so the terminal shows the failure
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
@@ -163,6 +231,7 @@ impl TerminalManager {
                 config: config.clone(),
                 pty_pair,
                 writer,
+                reader_handle: Some(reader_handle),
             },
         );
 
@@ -201,11 +270,19 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
-        self.terminals.remove(id);
+        if let Some(terminal) = self.terminals.remove(id) {
+            // Dropping the terminal drops the writer and PTY pair, which signals EOF
+            // to the reader thread. The reader thread will exit on its next read attempt
+            // and clean up asynchronously. We do NOT join the reader thread here because
+            // on Windows, PTY reads can block indefinitely even after the writer is dropped,
+            // which would deadlock the mutex and freeze the entire application.
+            drop(terminal);
+        }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
+        // Clear all terminals at once — reader threads clean up asynchronously
         self.terminals.clear();
     }
 
@@ -216,6 +293,15 @@ impl TerminalManager {
     pub fn update_label(&mut self, id: &str, label: String) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.label = label;
+            Ok(())
+        } else {
+            Err("Terminal not found".to_string())
+        }
+    }
+
+    pub fn update_status(&mut self, id: &str, status: TerminalStatus) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.status = status;
             Ok(())
         } else {
             Err("Terminal not found".to_string())
