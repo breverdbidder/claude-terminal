@@ -605,6 +605,272 @@ pub async fn get_terminal_changes(
     })
 }
 
+// ─── Git Worktree Commands ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+    pub head_sha: String,
+    pub is_main: bool,
+    pub is_bare: bool,
+    pub is_detached: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorktreeDetectResult {
+    pub is_git_repo: bool,
+    pub is_worktree: bool,
+    pub main_repo_path: Option<String>,
+    pub current_branch: Option<String>,
+    pub worktree_root: Option<String>,
+}
+
+#[command]
+pub async fn get_worktree_info(path: String) -> Result<WorktreeDetectResult, String> {
+    // Check if inside a git work tree
+    let inside_wt = shell_command("git", &["rev-parse", "--is-inside-work-tree"])
+        .current_dir(&path)
+        .output();
+
+    let is_git_repo = matches!(inside_wt, Ok(ref o) if o.status.success()
+        && String::from_utf8_lossy(&o.stdout).trim() == "true");
+
+    if !is_git_repo {
+        return Ok(WorktreeDetectResult {
+            is_git_repo: false,
+            is_worktree: false,
+            main_repo_path: None,
+            current_branch: None,
+            worktree_root: None,
+        });
+    }
+
+    // Get worktree root (--show-toplevel)
+    let toplevel = shell_command("git", &["rev-parse", "--show-toplevel"])
+        .current_dir(&path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+
+    // Get git-dir and git-common-dir to detect if this is a linked worktree
+    let git_dir = shell_command("git", &["rev-parse", "--git-dir"])
+        .current_dir(&path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+
+    let git_common_dir = shell_command("git", &["rev-parse", "--git-common-dir"])
+        .current_dir(&path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+
+    // If git-dir != git-common-dir, this is a linked worktree
+    let is_worktree = match (&git_dir, &git_common_dir) {
+        (Some(dir), Some(common)) => {
+            let dir_canon = std::path::PathBuf::from(dir).canonicalize().ok();
+            let common_canon = std::path::PathBuf::from(common).canonicalize().ok();
+            match (dir_canon, common_canon) {
+                (Some(d), Some(c)) => d != c,
+                _ => dir != common,
+            }
+        }
+        _ => false,
+    };
+
+    // Derive main repo path from git-common-dir (strip trailing .git)
+    let main_repo_path = git_common_dir.and_then(|common| {
+        let p = std::path::PathBuf::from(&common);
+        let canonical = p.canonicalize().ok()?;
+        // git-common-dir points to the .git directory; parent is the repo root
+        if canonical.file_name().map(|f| f == ".git").unwrap_or(false) {
+            canonical.parent().map(|p| p.to_string_lossy().to_string())
+        } else {
+            Some(canonical.to_string_lossy().to_string())
+        }
+    });
+
+    // Get current branch
+    let current_branch = shell_command("git", &["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if b == "HEAD" { None } else { Some(b) }
+        })
+        .flatten();
+
+    Ok(WorktreeDetectResult {
+        is_git_repo: true,
+        is_worktree,
+        main_repo_path,
+        current_branch,
+        worktree_root: toplevel,
+    })
+}
+
+#[command]
+pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
+    let output = shell_command("git", &["worktree", "list", "--porcelain"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut worktrees = Vec::new();
+    let mut is_first = true;
+
+    // Parse porcelain output: blocks separated by blank lines
+    for block in stdout.split("\n\n") {
+        let block = block.trim();
+        if block.is_empty() {
+            continue;
+        }
+
+        let mut wt_path = String::new();
+        let mut head_sha = String::new();
+        let mut branch: Option<String> = None;
+        let mut is_bare = false;
+        let mut is_detached = false;
+
+        for line in block.lines() {
+            if let Some(p) = line.strip_prefix("worktree ") {
+                wt_path = p.to_string();
+            } else if let Some(h) = line.strip_prefix("HEAD ") {
+                head_sha = h[..7.min(h.len())].to_string();
+            } else if let Some(b) = line.strip_prefix("branch ") {
+                // Strip refs/heads/ prefix
+                branch = Some(
+                    b.strip_prefix("refs/heads/")
+                        .unwrap_or(b)
+                        .to_string(),
+                );
+            } else if line == "bare" {
+                is_bare = true;
+            } else if line == "detached" {
+                is_detached = true;
+            }
+        }
+
+        if !wt_path.is_empty() {
+            worktrees.push(WorktreeInfo {
+                path: wt_path,
+                branch,
+                head_sha,
+                is_main: is_first,
+                is_bare,
+                is_detached,
+            });
+        }
+        is_first = false;
+    }
+
+    Ok(worktrees)
+}
+
+#[command]
+pub async fn get_repo_branches(path: String) -> Result<Vec<String>, String> {
+    let output = shell_command("git", &["branch", "--format=%(refname:short)"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to list branches: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(branches)
+}
+
+#[command]
+pub async fn create_worktree(
+    repo_path: String,
+    worktree_path: String,
+    branch: String,
+    create_branch: bool,
+) -> Result<WorktreeInfo, String> {
+    // Validate branch name
+    let branch_regex = regex::Regex::new(r"^[a-zA-Z0-9_./-]+$")
+        .map_err(|e| e.to_string())?;
+    if !branch_regex.is_match(&branch) {
+        return Err("Invalid branch name. Use only letters, numbers, dots, hyphens, underscores, and slashes.".to_string());
+    }
+
+    let output = if create_branch {
+        shell_command("git", &["worktree", "add", "-b", &branch, &worktree_path])
+            .current_dir(&repo_path)
+            .output()
+    } else {
+        shell_command("git", &["worktree", "add", &worktree_path, &branch])
+            .current_dir(&repo_path)
+            .output()
+    };
+
+    let output = output.map_err(|e| format!("Failed to create worktree: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(stderr);
+    }
+
+    // Return the new worktree info by listing and finding the new one
+    let worktrees = list_worktrees(repo_path).await?;
+    let normalized_path = std::path::PathBuf::from(&worktree_path);
+    let canonical = normalized_path.canonicalize().ok();
+
+    worktrees
+        .into_iter()
+        .find(|wt| {
+            let wt_canon = std::path::PathBuf::from(&wt.path).canonicalize().ok();
+            match (&canonical, &wt_canon) {
+                (Some(a), Some(b)) => a == b,
+                _ => wt.path == worktree_path,
+            }
+        })
+        .ok_or_else(|| "Worktree created but not found in list".to_string())
+}
+
+#[command]
+pub async fn remove_worktree(
+    repo_path: String,
+    worktree_path: String,
+    force: bool,
+) -> Result<(), String> {
+    let args = if force {
+        vec!["worktree", "remove", "--force", &worktree_path]
+    } else {
+        vec!["worktree", "remove", &worktree_path]
+    };
+
+    let output = shell_command("git", &args)
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Failed to remove worktree: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
 // Session history commands
 
 #[command]

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, GitBranch, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -28,7 +28,10 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
 
 export function FileChangesPanel() {
   const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
+  const gitInfoCache = useTerminalStore((s) => s.gitInfoCache);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
+  const openWorktreeModal = useAppStore((s) => s.openWorktreeModal);
+  const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
   const [result, setResult] = useState<FileChangesResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +80,25 @@ export function FileChangesPanel() {
         </div>
         {result?.branch && (
           <div className="flex items-center gap-1.5 text-text-secondary">
-            <GitBranch size={12} />
+            {activeGitInfo?.is_worktree ? (
+              <GitFork size={12} className="text-purple-400" />
+            ) : (
+              <GitBranch size={12} />
+            )}
             <span className="text-[11px] font-mono">{result.branch}</span>
+          </div>
+        )}
+        {activeGitInfo?.is_worktree && activeGitInfo.main_repo_path && (
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-text-tertiary text-[11px]">
+              Worktree of {activeGitInfo.main_repo_path.replace(/^.*[\\/]/, '')}
+            </span>
+            <button
+              onClick={() => openWorktreeModal(activeGitInfo.main_repo_path!)}
+              className="text-accent-primary text-[11px] hover:text-accent-secondary transition-colors"
+            >
+              Manage
+            </button>
           </div>
         )}
       </div>

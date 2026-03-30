@@ -14,6 +14,8 @@ interface AppState {
   editingProfileId: string | null;
   newTerminalModalOpen: boolean;
   workspaceModalOpen: boolean;
+  worktreeModalOpen: boolean;
+  worktreeModalRepoPath: string | null;
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
   restoreSession: boolean;
@@ -75,6 +77,8 @@ interface AppState {
   closeNewTerminalModal: () => void;
   openWorkspaceModal: () => void;
   closeWorkspaceModal: () => void;
+  openWorktreeModal: (repoPath: string) => void;
+  closeWorktreeModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -175,6 +179,8 @@ export const useAppStore = create<AppState>()(
       editingProfileId: null,
       newTerminalModalOpen: false,
       workspaceModalOpen: false,
+      worktreeModalOpen: false,
+      worktreeModalRepoPath: null,
       defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
@@ -236,6 +242,8 @@ export const useAppStore = create<AppState>()(
       closeNewTerminalModal: () => set({ newTerminalModalOpen: false }),
       openWorkspaceModal: () => set({ workspaceModalOpen: true }),
       closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
+      openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),
+      closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),

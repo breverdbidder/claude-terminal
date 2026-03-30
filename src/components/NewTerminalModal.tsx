@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { X, FolderOpen, Terminal, Zap } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
+import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -46,6 +47,20 @@ export function NewTerminalModal() {
   const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
 
+  // Worktree state
+  const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
+  const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [selectedWorktreePath, setSelectedWorktreePath] = useState<string | null>(null);
+  const [showNewWorktreeForm, setShowNewWorktreeForm] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [baseBranch, setBaseBranch] = useState('');
+  const [newWorktreePath, setNewWorktreePath] = useState('');
+  const [detectingGit, setDetectingGit] = useState(false);
+  const [creatingWorktree, setCreatingWorktree] = useState(false);
+  const [worktreeError, setWorktreeError] = useState<string | null>(null);
+  const detectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     loadProfiles();
     loadDefaultDirectory();
@@ -67,6 +82,101 @@ export function NewTerminalModal() {
       setEnvVars({});
     }
   }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
+
+  // Debounced git detection when working directory changes
+  const detectGitRepo = useCallback(async (dir: string) => {
+    if (!dir.trim()) {
+      setWorktreeDetect(null);
+      setWorktrees([]);
+      setBranches([]);
+      return;
+    }
+    setDetectingGit(true);
+    try {
+      const info = await invoke<WorktreeDetectResult>('get_worktree_info', { path: dir });
+      setWorktreeDetect(info);
+
+      if (info.is_git_repo) {
+        // Resolve repo path for listing worktrees
+        const repoPath = info.is_worktree && info.main_repo_path
+          ? info.main_repo_path
+          : dir;
+
+        const [wts, brs] = await Promise.all([
+          invoke<WorktreeInfo[]>('list_worktrees', { path: repoPath }),
+          invoke<string[]>('get_repo_branches', { path: repoPath }),
+        ]);
+        setWorktrees(wts);
+        setBranches(brs);
+        setSelectedWorktreePath(null);
+        if (brs.length > 0 && !baseBranch) {
+          setBaseBranch(brs[0]);
+        }
+      } else {
+        setWorktrees([]);
+        setBranches([]);
+      }
+    } catch {
+      setWorktreeDetect(null);
+      setWorktrees([]);
+      setBranches([]);
+    } finally {
+      setDetectingGit(false);
+    }
+  }, [baseBranch]);
+
+  useEffect(() => {
+    if (detectTimerRef.current) clearTimeout(detectTimerRef.current);
+    detectTimerRef.current = setTimeout(() => {
+      detectGitRepo(workingDirectory);
+    }, 500);
+    return () => {
+      if (detectTimerRef.current) clearTimeout(detectTimerRef.current);
+    };
+  }, [workingDirectory, detectGitRepo]);
+
+  // Auto-generate worktree path from branch name
+  useEffect(() => {
+    if (newBranchName && worktreeDetect?.is_git_repo) {
+      const repoPath = worktreeDetect.is_worktree && worktreeDetect.main_repo_path
+        ? worktreeDetect.main_repo_path
+        : workingDirectory;
+      const parentDir = repoPath.replace(/[\\/][^\\/]*$/, '');
+      const repoName = repoPath.replace(/^.*[\\/]/, '');
+      const sanitized = newBranchName.replace(/\//g, '-');
+      setNewWorktreePath(`${parentDir}\\${repoName}-${sanitized}`);
+    }
+  }, [newBranchName, worktreeDetect, workingDirectory]);
+
+  const handleCreateWorktree = async () => {
+    if (!newBranchName.trim() || !newWorktreePath.trim()) return;
+    setCreatingWorktree(true);
+    setWorktreeError(null);
+    try {
+      const repoPath = worktreeDetect?.is_worktree && worktreeDetect.main_repo_path
+        ? worktreeDetect.main_repo_path
+        : workingDirectory;
+
+      const branchExists = branches.includes(newBranchName);
+      const wt = await invoke<WorktreeInfo>('create_worktree', {
+        repoPath,
+        worktreePath: newWorktreePath,
+        branch: newBranchName,
+        createBranch: !branchExists,
+      });
+
+      // Add to list and select it
+      setWorktrees(prev => [...prev, wt]);
+      setSelectedWorktreePath(wt.path);
+      setWorkingDirectory(wt.path);
+      setShowNewWorktreeForm(false);
+      setNewBranchName('');
+    } catch (err) {
+      setWorktreeError(String(err));
+    } finally {
+      setCreatingWorktree(false);
+    }
+  };
 
   const loadProfiles = async () => {
     try {
@@ -269,6 +379,146 @@ export function NewTerminalModal() {
               </button>
             </div>
           </div>
+
+          {/* Git Worktrees */}
+          <AnimatePresence>
+            {worktreeDetect?.is_git_repo && worktrees.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-text-secondary text-[12px]">
+                      Git Worktrees
+                    </label>
+                    {detectingGit && <Loader2 size={12} className="text-text-tertiary animate-spin" />}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowNewWorktreeForm(!showNewWorktreeForm);
+                      setWorktreeError(null);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary transition-colors"
+                  >
+                    <Plus size={12} />
+                    New Worktree
+                  </button>
+                </div>
+
+                {worktreeDetect.is_worktree && worktreeDetect.main_repo_path && (
+                  <p className="text-[11px] text-text-tertiary mb-1.5">
+                    Worktree of <span className="font-mono text-text-secondary">{worktreeDetect.main_repo_path.replace(/^.*[\\/]/, '')}</span>
+                  </p>
+                )}
+
+                <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                  {worktrees.map((wt) => {
+                    const isSelected = selectedWorktreePath === wt.path
+                      || (!selectedWorktreePath && wt.path.replace(/\//g, '\\') === workingDirectory.replace(/\//g, '\\'));
+                    return (
+                      <button
+                        key={wt.path}
+                        onClick={() => {
+                          setSelectedWorktreePath(wt.path);
+                          setWorkingDirectory(wt.path);
+                        }}
+                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors ${
+                          isSelected
+                            ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
+                            : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
+                        }`}
+                      >
+                        {wt.is_main ? (
+                          <GitBranch size={13} className="text-accent-primary flex-shrink-0" />
+                        ) : (
+                          <GitFork size={13} className="text-purple-400 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-text-primary text-[12px] font-mono truncate">
+                            {wt.branch || '(detached)'}
+                            {wt.is_main && <span className="text-text-tertiary font-sans"> (main)</span>}
+                          </p>
+                          <p className="text-text-tertiary text-[11px] truncate">{wt.path}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* New Worktree Form */}
+                <AnimatePresence>
+                  {showNewWorktreeForm && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="mt-2 p-2.5 rounded-md bg-bg-primary ring-1 ring-border space-y-2"
+                    >
+                      <div>
+                        <label className="block text-text-tertiary text-[11px] mb-1">Branch name</label>
+                        <input
+                          type="text"
+                          value={newBranchName}
+                          onChange={(e) => setNewBranchName(e.target.value)}
+                          placeholder="feature/my-branch"
+                          className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-text-tertiary text-[11px] mb-1">Base branch</label>
+                        <div className="relative">
+                          <select
+                            value={baseBranch}
+                            onChange={(e) => setBaseBranch(e.target.value)}
+                            className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 pr-8 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors appearance-none"
+                          >
+                            {branches.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-text-tertiary text-[11px] mb-1">Worktree path</label>
+                        <input
+                          type="text"
+                          value={newWorktreePath}
+                          onChange={(e) => setNewWorktreePath(e.target.value)}
+                          className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        />
+                      </div>
+                      {worktreeError && (
+                        <p className="text-error text-[11px]">{worktreeError}</p>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setShowNewWorktreeForm(false);
+                            setWorktreeError(null);
+                          }}
+                          className="px-3 h-7 text-text-secondary hover:text-text-primary text-[12px] rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleCreateWorktree}
+                          disabled={creatingWorktree || !newBranchName.trim()}
+                          className="px-3 h-7 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white text-[12px] rounded font-medium transition-colors"
+                        >
+                          {creatingWorktree ? 'Creating...' : 'Create'}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Claude Arguments */}
           <div>

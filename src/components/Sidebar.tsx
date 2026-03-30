@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, Brain, GripVertical } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
@@ -26,8 +26,8 @@ export function Sidebar() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds } = useTerminalStore();
-  const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds, gitInfoCache } = useTerminalStore();
+  const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
 
   const terminalList = useMemo(() =>
     Array.from(terminals.values())
@@ -181,6 +181,25 @@ export function Sidebar() {
                         );
                       })()}
                     </div>
+                    {gitInfoCache.get(terminal.id)?.is_git_repo && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        {gitInfoCache.get(terminal.id)?.is_worktree ? (
+                          <GitFork size={11} className="text-purple-400 flex-shrink-0" />
+                        ) : (
+                          <GitBranch size={11} className="text-accent-primary flex-shrink-0" />
+                        )}
+                        <span className={`text-[11px] font-mono truncate ${
+                          gitInfoCache.get(terminal.id)?.is_worktree ? 'text-purple-400' : 'text-accent-primary'
+                        }`}>
+                          {gitInfoCache.get(terminal.id)?.current_branch || '(detached)'}
+                        </span>
+                        {gitInfoCache.get(terminal.id)?.is_worktree && (
+                          <span className="text-[10px] px-1 rounded bg-purple-400/10 text-purple-400 flex-shrink-0">
+                            worktree
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <p className="text-text-tertiary text-[11px] truncate mt-0.5">
                       {terminal.working_directory}
                     </p>
@@ -264,6 +283,22 @@ export function Sidebar() {
                         >
                           <Copy size={14} /> Duplicate
                         </button>
+                        {gitInfoCache.get(terminal.id)?.is_git_repo && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const gitInfo = gitInfoCache.get(terminal.id);
+                              const repoPath = gitInfo?.is_worktree
+                                ? gitInfo.main_repo_path || terminal.working_directory
+                                : terminal.working_directory;
+                              openWorktreeModal(repoPath);
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
+                          >
+                            <GitFork size={14} /> Worktrees...
+                          </button>
+                        )}
                         <div className="h-px bg-border my-1" />
                         <button
                           onClick={(e) => {

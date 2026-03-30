@@ -13,7 +13,7 @@ import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode } = useAppStore();
   const terminalList = useMemo(() => Array.from(terminals.values()).map(t => t.config), [terminals]);
 
@@ -173,7 +173,14 @@ export function TerminalTabs() {
                   {loopInfo && (
                     <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${loopInfo.interval}`} />
                   )}
-                  <span className="max-w-[160px] truncate">{terminal.nickname || terminal.label}</span>
+                  <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
+                  {gitInfoCache.get(terminal.id)?.current_branch && (
+                    <span className={`text-[11px] font-mono max-w-[60px] truncate ${
+                      gitInfoCache.get(terminal.id)?.is_worktree ? 'text-purple-400' : 'text-text-tertiary'
+                    }`}>
+                      {gitInfoCache.get(terminal.id)?.current_branch}
+                    </span>
+                  )}
                   {isRunning && (
                     <TeleportActions terminalId={terminal.id} />
                   )}
