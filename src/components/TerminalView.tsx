@@ -15,6 +15,7 @@ interface TerminalViewProps {
 
 export function TerminalView({ terminalId }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const { terminals, writeToTerminal, resizeTerminal, setXterm } = useTerminalStore();
@@ -79,6 +80,19 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Auto-focus so keyboard input works immediately without requiring a click
     terminal.focus();
 
+    // Re-focus xterm if its textarea loses focus to nothing (body/canvas),
+    // which happens in WebView2 after PTY output triggers React re-renders
+    // or when clicking the terminal canvas directly.
+    const handleBlur = () => {
+      requestAnimationFrame(() => {
+        const focused = document.activeElement;
+        if (!focused || focused === document.body || focused.tagName === 'CANVAS') {
+          terminal.focus();
+        }
+      });
+    };
+    terminal.textarea?.addEventListener('blur', handleBlur);
+
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -132,11 +146,14 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
     resizeObserver.observe(containerRef.current);
 
+    terminalRef.current = terminal;
     setXterm(terminalId, terminal);
 
     return () => {
       resizeObserver.disconnect();
+      terminal.textarea?.removeEventListener('blur', handleBlur);
       searchAddonRef.current = null;
+      terminalRef.current = null;
       terminal.dispose();
     };
   }, [terminalId, instance, writeToTerminal, resizeTerminal, setXterm, toggleSearch]);
@@ -151,6 +168,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       <div
         ref={containerRef}
         className="flex-1 min-h-0 w-full"
+        onMouseDown={() => terminalRef.current?.focus()}
       />
       <TerminalStatusBar terminalId={terminalId} />
     </div>
