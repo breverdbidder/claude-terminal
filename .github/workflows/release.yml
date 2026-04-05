@@ -127,3 +127,10 @@ jobs:
               release_id: ${{ needs.create-release.outputs.release_id }},
               draft: false
             });
+
+      - name: Trigger website rebuild
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          repository: talayash/claude-terminal-website
+          event-type: new-release
