@@ -1,6 +1,6 @@
 [package]
 name = "claude-terminal"
-version = "1.17.5"
+version = "1.18.0"
 edition = "2021"
 
 [features]

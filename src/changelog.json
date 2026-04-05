@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.18.0",
+    "date": "2026-04-05",
+    "features": [
+      { "title": "Elevation Design System", "description": "New 5-level surface hierarchy with refined color tokens, desaturated accents, and glow shadows for improved visual depth" },
+      { "title": "App Status Bar", "description": "Persistent bottom bar showing terminal count, active status, model indicator, notification toggle, Claude version, and app version" },
+      { "title": "Enhanced Command Palette", "description": "Prefix filtering (> commands, @ terminals, # snippets), icons, keyboard shortcut badges, ranked fuzzy search, and smooth animations" },
+      { "title": "Collapsible Sidebar", "description": "Sidebar now collapses to a 48px icon rail with terminal status dots, unread indicators, and quick-action buttons" },
+      { "title": "Tab Scroll Indicators", "description": "Gradient fade arrows appear when tabs overflow, with hidden scrollbar for a cleaner look" },
+      { "title": "Modal Backdrop Blur", "description": "All modals now use a subtle backdrop blur effect for improved visual layering" }
+    ]
+  },
+  {
     "version": "1.17.5",
     "date": "2026-03-30",
     "features": [
