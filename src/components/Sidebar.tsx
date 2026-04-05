@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
@@ -27,7 +27,7 @@ export function Sidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds, gitInfoCache } = useTerminalStore();
-  const { openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
+  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
 
   const terminalList = useMemo(() =>
     Array.from(terminals.values())
@@ -54,17 +54,71 @@ export function Sidebar() {
     setEditingNicknameId(null);
   };
 
-  return (
-    <div className="h-full bg-bg-secondary border-r border-border flex flex-col">
-      {/* Header */}
-      <div className="p-3 border-b border-border">
+  // ─── Collapsed icon-rail mode ───
+  if (sidebarCollapsed) {
+    return (
+      <div className="h-full bg-elevation-1 border-r border-border flex flex-col items-center py-2 gap-1" style={{ width: 48 }}>
         <button
           onClick={handleNewTerminal}
-          className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white py-2 px-4 rounded-md font-medium text-[13px] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-primary/15 hover:bg-accent-primary/25 text-accent-primary transition-colors"
+          title="New Terminal"
         >
           <Plus size={16} />
-          New Terminal
         </button>
+        <div className="h-px w-6 bg-border my-1" />
+        <div className="flex-1 overflow-y-auto flex flex-col items-center gap-1 w-full px-1">
+          {Array.from(terminals.values()).map((instance) => {
+            const t = instance.config;
+            const isActive = activeTerminalId === t.id;
+            const hasUnread = unreadTerminalIds.has(t.id) && !isActive;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTerminal(t.id)}
+                className={`relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
+                  isActive ? 'bg-accent-primary/15 ring-1 ring-accent-primary/30' : 'hover:bg-white/[0.06]'
+                }`}
+                title={`${t.nickname || t.label} (${t.status})`}
+              >
+                <div className={`w-2.5 h-2.5 rounded-full ${t.color_tag || STATUS_COLORS[t.status]}`} />
+                {hasUnread && (
+                  <div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="h-px w-6 bg-border my-1" />
+        <button onClick={() => openWorkspaceModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Workspaces"><FolderOpen size={14} /></button>
+        <button onClick={() => openSnippetsModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Snippets"><FileText size={14} /></button>
+        <button onClick={() => openSessionHistory()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Session History"><Clock size={14} /></button>
+        <button onClick={() => openProfileModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Profiles"><Settings size={14} /></button>
+        <button onClick={toggleSidebarCollapse} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors mt-1" title="Expand sidebar"><ChevronsRight size={14} /></button>
+      </div>
+    );
+  }
+
+  // ─── Full expanded mode ───
+  return (
+    <div className="h-full bg-elevation-1 border-r border-border flex flex-col">
+      {/* Header */}
+      <div className="p-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleNewTerminal}
+            className="flex-1 flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white py-2 px-4 rounded-lg font-medium text-[13px] transition-colors"
+          >
+            <Plus size={16} />
+            New Terminal
+          </button>
+          <button
+            onClick={toggleSidebarCollapse}
+            className="p-2 rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+            title="Collapse sidebar"
+          >
+            <ChevronsLeft size={14} />
+          </button>
+        </div>
 
         <div className="mt-3 relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
@@ -73,7 +127,7 @@ export function Sidebar() {
             placeholder="Filter terminals..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors"
+            className="w-full bg-elevation-0 ring-1 ring-border-light rounded-lg py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-border-focus transition-colors"
           />
         </div>
       </div>
@@ -229,7 +283,7 @@ export function Sidebar() {
                           setMenuOpenId(null);
                         }}
                       />
-                      <div className="absolute right-0 top-full mt-1 bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-xl py-1 min-w-[140px] z-50">
+                      <div className="absolute right-0 top-full mt-1 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 py-1 min-w-[140px] z-50">
                         {gridTerminalIds.includes(terminal.id) ? (
                           <button
                             onClick={(e) => {

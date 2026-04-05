@@ -21,6 +21,7 @@ import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
+import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -81,7 +82,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, telemetryEnabled, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, telemetryEnabled, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -332,8 +333,8 @@ function App() {
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 280 }}
+                  className="h-full overflow-hidden transition-all duration-200 ease-out"
+                  style={{ width: sidebarCollapsed ? 48 : 280 }}
                 >
                   <Sidebar />
                 </div>
@@ -377,6 +378,8 @@ function App() {
               )}
             </AnimatePresence>
           </div>
+
+          <StatusBar />
 
           <AnimatePresence>
             {settingsOpen && <SettingsModal />}

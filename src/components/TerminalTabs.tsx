@@ -1,6 +1,6 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence, Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -60,6 +60,37 @@ export function TerminalTabs() {
     setSplitMode(true);
   }, [setSplitTerminals, setSplitMode]);
 
+  // Tab scroll overflow detection
+  const tabsContainerRef = useRef<HTMLUListElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, terminalList.length]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction === 'left' ? -200 : 200, behavior: 'smooth' });
+  };
+
   // If split mode is active with valid terminals, show split view
   if (splitMode && splitTerminalIds && terminals.has(splitTerminalIds[0]) && terminals.has(splitTerminalIds[1])) {
     return (
@@ -113,13 +144,22 @@ export function TerminalTabs() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar */}
-      <div className="h-10 bg-bg-secondary border-b border-border flex items-center justify-between px-1">
-        <div className="flex items-center flex-1 min-w-0">
+      <div className="h-10 bg-elevation-1 border-b border-border flex items-center justify-between px-1">
+        <div className="relative flex items-center flex-1 min-w-0">
+          {canScrollLeft && (
+            <button
+              onClick={() => scrollTabs('left')}
+              className="absolute left-0 z-10 h-full px-1 flex items-center bg-gradient-to-r from-elevation-1 via-elevation-1/90 to-transparent"
+            >
+              <ChevronLeft size={14} className="text-text-secondary" />
+            </button>
+          )}
           <Reorder.Group
+            ref={tabsContainerRef}
             axis="x"
             values={terminalList}
             onReorder={() => {}}
-            className="flex items-center overflow-x-auto"
+            className="flex items-center overflow-x-auto scrollbar-none"
           >
             {terminalList.map((terminal) => {
               const instance = terminals.get(terminal.id);
@@ -225,6 +265,14 @@ export function TerminalTabs() {
             })}
           </Reorder.Group>
 
+          {canScrollRight && (
+            <button
+              onClick={() => scrollTabs('right')}
+              className="absolute right-8 z-10 h-full px-1 flex items-center bg-gradient-to-l from-elevation-1 via-elevation-1/90 to-transparent"
+            >
+              <ChevronRight size={14} className="text-text-secondary" />
+            </button>
+          )}
           <button
             onClick={handleNewTab}
             className="p-1.5 rounded hover:bg-white/[0.04] text-text-tertiary hover:text-text-secondary transition-colors flex-shrink-0 ml-1"

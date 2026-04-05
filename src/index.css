@@ -123,6 +123,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Elevation system — structured surface hierarchy */
+:root {
+  --elevation-0: #0E0E0E;  /* App background */
+  --elevation-1: #161616;  /* Sidebar, tab bar, status bar */
+  --elevation-2: #1E1E1E;  /* Cards, panels */
+  --elevation-3: #262626;  /* Floating overlays, dropdowns */
+  --elevation-4: #2E2E2E;  /* Modals, command palette */
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -170,6 +179,24 @@ body {
   overflow-y: auto !important;
 }
 
+/* Themed xterm scrollbar */
+.xterm-viewport::-webkit-scrollbar {
+  width: 5px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #2E2E2E;
+  border-radius: 3px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #3A3A3A;
+}
+
 /* Enhanced cursor visibility */
 .xterm-cursor-block {
   outline: none !important;
@@ -177,6 +204,15 @@ body {
 
 .xterm .xterm-cursor-layer {
   z-index: 3;
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Drag region for title bar */

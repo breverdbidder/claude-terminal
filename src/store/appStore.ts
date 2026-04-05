@@ -7,6 +7,7 @@ export type SplitOrientation = 'horizontal' | 'vertical';
 
 interface AppState {
   sidebarOpen: boolean;
+  sidebarCollapsed: boolean;  // true = icon rail (48px), false = full width (280px)
   hintsOpen: boolean;
   changesOpen: boolean;
   settingsOpen: boolean;
@@ -66,6 +67,8 @@ interface AppState {
   lastSeenVersion: string | null;
 
   toggleSidebar: () => void;
+  toggleSidebarCollapse: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   toggleHints: () => void;
   toggleChanges: () => void;
   triggerChangesRefresh: () => void;
@@ -172,6 +175,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       sidebarOpen: true,
+      sidebarCollapsed: false,
       hintsOpen: false,
       changesOpen: false,
       settingsOpen: false,
@@ -231,6 +235,8 @@ export const useAppStore = create<AppState>()(
       lastSeenVersion: null,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen })),
       toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
@@ -347,6 +353,7 @@ export const useAppStore = create<AppState>()(
       name: 'claude-terminal-app',
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
+        sidebarCollapsed: state.sidebarCollapsed,
         hintsOpen: state.hintsOpen,
         changesOpen: state.changesOpen,
         defaultClaudeArgs: state.defaultClaudeArgs,
