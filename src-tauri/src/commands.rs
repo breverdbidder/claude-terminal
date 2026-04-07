@@ -435,10 +435,16 @@ pub async fn send_notification(title: String, body: String) -> Result<(), String
 
 #[command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
+    // Reject null bytes that could confuse shell execution
+    if url.contains('\0') {
+        return Err("Invalid URL".to_string());
+    }
+    // Parse with a proper URL parser to prevent scheme confusion
+    let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
         return Err("Only HTTP and HTTPS URLs are allowed".to_string());
     }
-    open::that(&url).map_err(|e| e.to_string())
+    open::that(parsed.as_str()).map_err(|e| e.to_string())
 }
 
 #[command]
@@ -626,8 +632,40 @@ pub struct WorktreeDetectResult {
     pub worktree_root: Option<String>,
 }
 
+/// Validate that a path belongs to (or is under) an active terminal's working directory.
+/// Prevents arbitrary filesystem access via git commands.
+async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
+    let canonical_path = std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|_| "Invalid path: directory does not exist".to_string())?;
+
+    let terminals = state.terminals.lock().await;
+    let known_dirs = terminals.get_all_configs();
+
+    let is_trusted = known_dirs.iter().any(|config| {
+        if config.working_directory.is_empty() {
+            return false;
+        }
+        std::path::Path::new(&config.working_directory)
+            .canonicalize()
+            .ok()
+            .map(|known| canonical_path.starts_with(&known) || known.starts_with(&canonical_path))
+            .unwrap_or(false)
+    });
+
+    if !is_trusted {
+        return Err("Path is not associated with any active terminal session".to_string());
+    }
+    Ok(())
+}
+
 #[command]
-pub async fn get_worktree_info(path: String) -> Result<WorktreeDetectResult, String> {
+pub async fn get_worktree_info(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<WorktreeDetectResult, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
     // Check if inside a git work tree
     let inside_wt = shell_command("git", &["rev-parse", "--is-inside-work-tree"])
         .current_dir(&path)
@@ -715,10 +753,10 @@ pub async fn get_worktree_info(path: String) -> Result<WorktreeDetectResult, Str
     })
 }
 
-#[command]
-pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
+/// Internal helper to list worktrees for a given path (no authorization check).
+fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String> {
     let output = shell_command("git", &["worktree", "list", "--porcelain"])
-        .current_dir(&path)
+        .current_dir(path)
         .output()
         .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
 
@@ -779,7 +817,21 @@ pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
 }
 
 #[command]
-pub async fn get_repo_branches(path: String) -> Result<Vec<String>, String> {
+pub async fn list_worktrees(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<WorktreeInfo>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+    list_worktrees_internal(&path)
+}
+
+#[command]
+pub async fn get_repo_branches(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<String>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
     let output = shell_command("git", &["branch", "--format=%(refname:short)"])
         .current_dir(&path)
         .output()
@@ -801,11 +853,18 @@ pub async fn get_repo_branches(path: String) -> Result<Vec<String>, String> {
 
 #[command]
 pub async fn create_worktree(
+    state: State<'_, AppState>,
     repo_path: String,
     worktree_path: String,
     branch: String,
     create_branch: bool,
 ) -> Result<WorktreeInfo, String> {
+    validate_path_is_trusted(&state, &repo_path).await?;
+
+    // Validate worktree_path doesn't contain null bytes or traversal
+    if worktree_path.contains('\0') || worktree_path.contains("..") {
+        return Err("Invalid worktree path".to_string());
+    }
     // Validate branch name
     let branch_regex = regex::Regex::new(r"^[a-zA-Z0-9_./-]+$")
         .map_err(|e| e.to_string())?;
@@ -831,7 +890,7 @@ pub async fn create_worktree(
     }
 
     // Return the new worktree info by listing and finding the new one
-    let worktrees = list_worktrees(repo_path).await?;
+    let worktrees = list_worktrees_internal(&repo_path)?;
     let normalized_path = std::path::PathBuf::from(&worktree_path);
     let canonical = normalized_path.canonicalize().ok();
 
@@ -849,10 +908,17 @@ pub async fn create_worktree(
 
 #[command]
 pub async fn remove_worktree(
+    state: State<'_, AppState>,
     repo_path: String,
     worktree_path: String,
     force: bool,
 ) -> Result<(), String> {
+    validate_path_is_trusted(&state, &repo_path).await?;
+
+    // Validate worktree_path doesn't contain null bytes or traversal
+    if worktree_path.contains('\0') || worktree_path.contains("..") {
+        return Err("Invalid worktree path".to_string());
+    }
     let args = if force {
         vec!["worktree", "remove", "--force", &worktree_path]
     } else {

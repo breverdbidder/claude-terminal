@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.18.1",
+    "date": "2026-04-07",
+    "features": [
+      { "title": "URL Validation Hardening", "description": "External URL opening now uses proper URL parsing to prevent scheme confusion and null byte bypass attacks" },
+      { "title": "Worktree Path Authorization", "description": "Git worktree and branch commands now validate that paths belong to active terminal sessions, preventing unauthorized filesystem access" }
+    ]
+  },
+  {
     "version": "1.18.0",
     "date": "2026-04-05",
     "features": [
