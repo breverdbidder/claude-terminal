@@ -611,6 +611,127 @@ pub async fn get_terminal_changes(
     })
 }
 
+// ─── File Diff Command ──────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileDiffResult {
+    pub file_path: String,
+    pub diff_text: String,
+    pub is_new_file: bool,
+    pub is_deleted_file: bool,
+    pub is_binary: bool,
+}
+
+#[command]
+pub async fn get_file_diff(
+    state: State<'_, AppState>,
+    id: String,
+    file_path: String,
+    staged: bool,
+) -> Result<FileDiffResult, String> {
+    let (working_directory, file_status) = {
+        let terminals = state.terminals.lock().await;
+        let configs = terminals.get_all_configs();
+        let config = configs
+            .into_iter()
+            .find(|c| c.id == id)
+            .ok_or_else(|| "Terminal not found".to_string())?;
+
+        // Run git status for this specific file to determine its status
+        let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
+            .current_dir(&config.working_directory)
+            .output()
+            .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+        let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        let file_status = if status_str.len() >= 2 {
+            status_str[..2].trim().to_string()
+        } else {
+            String::new()
+        };
+
+        (config.working_directory.clone(), file_status)
+    };
+
+    let is_new_file = file_status == "??" || file_status == "A";
+    let is_deleted_file = file_status == "D";
+
+    let diff_text = if is_new_file {
+        // For untracked/new files, read the file and format as all-added
+        let full_path = std::path::Path::new(&working_directory).join(&file_path);
+        match std::fs::read_to_string(&full_path) {
+            Ok(content) => {
+                let lines: Vec<String> = content.lines().enumerate().map(|(_, line)| {
+                    format!("+{}", line)
+                }).collect();
+                format!(
+                    "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
+                    file_path,
+                    lines.len(),
+                    lines.join("\n")
+                )
+            }
+            Err(_) => String::from("Unable to read file contents")
+        }
+    } else if is_deleted_file {
+        // For deleted files, show content from HEAD
+        let show_output = shell_command("git", &["show", &format!("HEAD:{}", file_path)])
+            .current_dir(&working_directory)
+            .output();
+        match show_output {
+            Ok(output) if output.status.success() => {
+                let content = String::from_utf8_lossy(&output.stdout);
+                let lines: Vec<String> = content.lines().enumerate().map(|(_, line)| {
+                    format!("-{}", line)
+                }).collect();
+                format!(
+                    "--- a/{}\n+++ /dev/null\n@@ -1,{} +0,0 @@\n{}",
+                    file_path,
+                    lines.len(),
+                    lines.join("\n")
+                )
+            }
+            _ => String::from("Unable to read deleted file contents")
+        }
+    } else {
+        // For modified/renamed files, run git diff
+        let mut args = vec!["diff"];
+        if staged {
+            args.push("--cached");
+        }
+        args.push("--");
+        args.push(&file_path);
+
+        let diff_output = shell_command("git", &args)
+            .current_dir(&working_directory)
+            .output()
+            .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+        let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+        // If unstaged diff is empty, try staged diff (file might be fully staged)
+        if text.trim().is_empty() && !staged {
+            let staged_output = shell_command("git", &["diff", "--cached", "--", &file_path])
+                .current_dir(&working_directory)
+                .output()
+                .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+            String::from_utf8_lossy(&staged_output.stdout).to_string()
+        } else {
+            text
+        }
+    };
+
+    let is_binary = diff_text.contains("Binary files") && diff_text.contains("differ");
+
+    Ok(FileDiffResult {
+        file_path,
+        diff_text,
+        is_new_file,
+        is_deleted_file,
+        is_binary,
+    })
+}
+
 // ─── Git Worktree Commands ───────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]

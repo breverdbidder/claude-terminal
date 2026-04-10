@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { InlineDiffView } from './InlineDiffView';
 
 interface FileChange {
   path: string;
@@ -35,6 +36,7 @@ export function FileChangesPanel() {
   const [result, setResult] = useState<FileChangesResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
 
   const fetchChanges = async () => {
     if (!activeTerminalId) return;
@@ -52,6 +54,7 @@ export function FileChangesPanel() {
 
   useEffect(() => {
     fetchChanges();
+    setExpandedFile(null);
   }, [activeTerminalId, changesRefreshTrigger]);
 
   // Group changes by status
@@ -148,16 +151,34 @@ export function FileChangesPanel() {
                 </span>
                 <span className="text-text-tertiary text-[11px]">({files.length})</span>
               </div>
-              {files.map((file) => (
-                <div
-                  key={file.path}
-                  className="ml-3 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors"
-                >
-                  <p className={`text-[12px] font-mono truncate ${config.color}`} title={file.path}>
-                    {file.path}
-                  </p>
-                </div>
-              ))}
+              {files.map((file) => {
+                const isExpanded = expandedFile === file.path;
+                return (
+                  <div key={file.path}>
+                    <div
+                      onClick={() => setExpandedFile(isExpanded ? null : file.path)}
+                      className="ml-3 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown size={12} className="text-text-tertiary shrink-0" />
+                      ) : (
+                        <ChevronRight size={12} className="text-text-tertiary shrink-0" />
+                      )}
+                      <p className={`text-[12px] font-mono truncate ${config.color}`} title={file.path}>
+                        {file.path}
+                      </p>
+                    </div>
+                    {isExpanded && activeTerminalId && (
+                      <div className="ml-3 mr-1 mb-1 rounded overflow-hidden border border-border/30">
+                        <InlineDiffView
+                          filePath={file.path}
+                          terminalId={activeTerminalId}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}

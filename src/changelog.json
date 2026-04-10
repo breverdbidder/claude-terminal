@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.18.2",
+    "date": "2026-04-10",
+    "features": [
+      { "title": "Inline Diff Viewer", "description": "Click any changed file in the File Changes panel to see its diff inline with syntax-colored additions, removals, and line numbers" }
+    ]
+  },
+  {
     "version": "1.18.1",
     "date": "2026-04-07",
     "features": [

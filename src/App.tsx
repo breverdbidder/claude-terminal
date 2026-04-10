@@ -349,7 +349,7 @@ function App() {
               {changesOpen && (
                 <div
                   className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 300 }}
+                  style={{ width: 420 }}
                 >
                   <FileChangesPanel />
                 </div>
