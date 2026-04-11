@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Play, Save, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 interface Snippet {
   id: string;
@@ -84,21 +85,26 @@ export function SnippetsModal() {
       await loadSnippets();
       setSelectedSnippet(snippet);
       setEditing(false);
+      toast.success('Snippet Saved', `"${snippet.title}" has been saved.`);
     } catch (err) {
       console.error('Failed to save snippet:', err);
+      toast.error('Save Failed', 'Could not save snippet.');
     }
   };
 
   const handleDelete = async (snippet: Snippet) => {
     try {
+      const title = snippet.title;
       await invoke('delete_snippet', { id: snippet.id });
       if (selectedSnippet?.id === snippet.id) {
         setSelectedSnippet(null);
         setEditing(false);
       }
       await loadSnippets();
+      toast.success('Snippet Deleted', `"${title}" has been removed.`);
     } catch (err) {
       console.error('Failed to delete snippet:', err);
+      toast.error('Delete Failed', 'Could not delete snippet.');
     }
   };
 
@@ -106,6 +112,7 @@ export function SnippetsModal() {
     const content = editing ? editContent : selectedSnippet?.content;
     if (!content || !activeTerminalId) return;
     await writeToTerminal(activeTerminalId, content);
+    toast.success('Snippet Inserted', 'Content sent to terminal.');
     closeSnippetsModal();
   };
 

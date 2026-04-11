@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { useAppStore } from '../store/appStore';
 import { useUpdaterStore } from '../store/updaterStore';
+import { toast } from '../store/toastStore';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -79,11 +80,13 @@ export function SettingsModal() {
       const result = await invoke<string>('update_claude_code');
       setUpdateStatus('success');
       setUpdateMessage(result);
+      toast.success('Claude Updated', result);
       // Re-check versions after update
       await checkForUpdates();
     } catch (error) {
       setUpdateStatus('error');
       setUpdateMessage(String(error));
+      toast.error('Update Failed', String(error));
     }
     setIsUpdating(false);
   };

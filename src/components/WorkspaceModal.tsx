@@ -4,6 +4,7 @@ import { X, Save, Trash2, FolderOpen, Play } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 interface WorkspaceInfo {
   name: string;
@@ -48,11 +49,14 @@ export function WorkspaceModal() {
     setSaving(true);
     try {
       const configs = Array.from(terminals.values()).map(t => t.config);
-      await invoke('save_workspace', { name: newName.trim(), terminals: configs });
+      const name = newName.trim();
+      await invoke('save_workspace', { name, terminals: configs });
       setNewName('');
       await loadWorkspaces();
+      toast.success('Workspace Saved', `"${name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);
     } catch (err) {
       console.error('Failed to save workspace:', err);
+      toast.error('Save Failed', 'Could not save workspace.');
     } finally {
       setSaving(false);
     }
@@ -73,9 +77,11 @@ export function WorkspaceModal() {
           config.nickname ?? undefined
         );
       }
+      toast.success('Workspace Loaded', `"${selectedWorkspace.name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);
       closeWorkspaceModal();
     } catch (err) {
       console.error('Failed to load workspace:', err);
+      toast.error('Load Failed', 'Could not load workspace.');
     } finally {
       setLoading(false);
     }
@@ -84,11 +90,14 @@ export function WorkspaceModal() {
   const handleDeleteWorkspace = async () => {
     if (!selectedWorkspace) return;
     try {
-      await invoke('delete_workspace', { name: selectedWorkspace.name });
+      const name = selectedWorkspace.name;
+      await invoke('delete_workspace', { name });
       setSelectedWorkspace(null);
       await loadWorkspaces();
+      toast.success('Workspace Deleted', `"${name}" has been removed.`);
     } catch (err) {
       console.error('Failed to delete workspace:', err);
+      toast.error('Delete Failed', 'Could not delete workspace.');
     }
   };
 
