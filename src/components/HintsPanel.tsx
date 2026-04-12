@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronRight, Rocket, Folder, GitBranch, Code, Bug, Terminal, Star } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from '../store/toastStore';
 
 interface Hint {
   title: string;
@@ -45,6 +46,7 @@ export function HintsPanel() {
   const copyToClipboard = async (command: string) => {
     await navigator.clipboard.writeText(command);
     setCopiedCommand(command);
+    toast.success('Copied', command);
   };
 
   // Clear copied state after timeout

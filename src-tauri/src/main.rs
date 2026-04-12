@@ -61,6 +61,7 @@ fn main() {
             commands::open_external_url,
             commands::send_notification,
             commands::get_terminal_changes,
+            commands::get_file_diff,
             commands::get_worktree_info,
             commands::list_worktrees,
             commands::get_repo_branches,

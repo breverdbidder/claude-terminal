@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, FileText, Brain, BookOpen, Save, RotateCw, ChevronRight } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import { toast } from '../store/toastStore';
 
 interface ClaudeMdInfo {
   path: string;
@@ -91,8 +92,10 @@ export function MemoryEditor() {
     try {
       await invoke('write_memory_file', { path: selectedClaudeMd.path, content: claudeMdContent });
       setClaudeMdDirty(false);
+      toast.success('File Saved', selectedClaudeMd.path.split(/[/\\]/).pop() || 'CLAUDE.md');
     } catch (err) {
       setError(String(err));
+      toast.error('Save Failed', String(err));
     } finally {
       setSaving(false);
     }
@@ -121,8 +124,10 @@ export function MemoryEditor() {
     try {
       await invoke('write_memory_file', { path: selectedMemory.path, content: memoryContent });
       setMemoryDirty(false);
+      toast.success('File Saved', selectedMemory.path.split(/[/\\]/).pop() || 'Memory file');
     } catch (err) {
       setError(String(err));
+      toast.error('Save Failed', String(err));
     } finally {
       setSaving(false);
     }
@@ -151,8 +156,10 @@ export function MemoryEditor() {
     try {
       await invoke('write_memory_file', { path: selectedRule.path, content: ruleContent });
       setRuleDirty(false);
+      toast.success('File Saved', selectedRule.path.split(/[/\\]/).pop() || 'Rule file');
     } catch (err) {
       setError(String(err));
+      toast.error('Save Failed', String(err));
     } finally {
       setSaving(false);
     }

@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Save, FolderOpen } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
+import { toast } from '../store/toastStore';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ConfigProfile {
@@ -64,9 +65,11 @@ export function ProfileModal() {
       await invoke('save_profile', { profile: selectedProfile });
       await loadProfiles();
       setIsCreating(false);
+      toast.success('Profile Saved', `"${selectedProfile.name}" has been saved.`);
     } catch (err) {
       console.error('Failed to save profile:', err);
       setSaveError(String(err));
+      toast.error('Save Failed', String(err));
     }
   };
 
@@ -89,14 +92,17 @@ export function ProfileModal() {
   const handleDeleteProfile = async (id: string) => {
     setSaveError(null);
     try {
+      const profileName = profiles.find(p => p.id === id)?.name || 'Profile';
       await invoke('delete_profile', { id });
       await loadProfiles();
       if (selectedProfile?.id === id) {
         setSelectedProfile(null);
       }
+      toast.success('Profile Deleted', `"${profileName}" has been removed.`);
     } catch (err) {
       console.error('Failed to delete profile:', err);
       setSaveError(String(err));
+      toast.error('Delete Failed', String(err));
     }
   };
 

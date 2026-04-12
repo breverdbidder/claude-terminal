@@ -22,8 +22,10 @@ import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
+import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
+import { toast } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
 import { listen } from '@tauri-apps/api/event';
@@ -165,6 +167,9 @@ function App() {
       updateTerminalStatus(id, 'Stopped');
       triggerChangesRefresh();
 
+      // Always show in-app toast
+      toast.info('Terminal Finished', `${name} has finished running.`);
+
       if (notifyOnFinish) {
         notify('Terminal Finished', `${name} has finished running.`);
       }
@@ -263,6 +268,7 @@ function App() {
         console.error('Failed to restore terminal:', config.label, err);
       }
     }
+    toast.success('Session Restored', `${pendingRestoreConfigs.length} terminal${pendingRestoreConfigs.length !== 1 ? 's' : ''} restored.`);
     setShowRestoreBanner(false);
     setPendingRestoreConfigs(null);
   };
@@ -349,7 +355,7 @@ function App() {
               {changesOpen && (
                 <div
                   className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 300 }}
+                  style={{ width: 420 }}
                 >
                   <FileChangesPanel />
                 </div>
@@ -397,6 +403,8 @@ function App() {
           {commandPaletteOpen && <CommandPalette />}
         </>
       )}
+
+      <ToastContainer />
     </div>
   );
 }
