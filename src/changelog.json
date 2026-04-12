@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.18.3",
+    "date": "2026-04-12",
+    "features": [
+      { "title": "Toast Notifications", "description": "In-app toast notifications for profile, workspace, snippet, and terminal operations with animated progress bars and auto-dismiss" },
+      { "title": "Terminal Focus Fix", "description": "Fixed keyboard becoming unresponsive after mouse click or PTY output in WebView2" }
+    ]
+  },
+  {
     "version": "1.18.2",
     "date": "2026-04-10",
     "features": [
