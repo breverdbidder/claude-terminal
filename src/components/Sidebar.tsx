@@ -54,19 +54,19 @@ export function Sidebar() {
     setEditingNicknameId(null);
   };
 
-  // ─── Collapsed icon-rail mode ───
+  // ─── Collapsed icon-rail mode (IntelliJ tool-window rail) ───
   if (sidebarCollapsed) {
     return (
-      <div className="h-full bg-elevation-1 border-r border-border flex flex-col items-center py-2 gap-1" style={{ width: 48 }}>
+      <div className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col items-center py-2 gap-0.5" style={{ width: 48 }}>
         <button
           onClick={handleNewTerminal}
-          className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-primary/15 hover:bg-accent-primary/25 text-accent-primary transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-accent-primary hover:bg-accent-secondary text-white transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
           title="New Terminal"
         >
-          <Plus size={16} />
+          <Plus size={15} strokeWidth={2} />
         </button>
-        <div className="h-px w-6 bg-border my-1" />
-        <div className="flex-1 overflow-y-auto flex flex-col items-center gap-1 w-full px-1">
+        <div className="h-px w-6 bg-[var(--ij-divider-soft)] my-2" />
+        <div className="flex-1 overflow-y-auto flex flex-col items-center gap-0.5 w-full px-1">
           {Array.from(terminals.values()).map((instance) => {
             const t = instance.config;
             const isActive = activeTerminalId === t.id;
@@ -75,59 +75,67 @@ export function Sidebar() {
               <button
                 key={t.id}
                 onClick={() => setActiveTerminal(t.id)}
-                className={`relative w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
-                  isActive ? 'bg-accent-primary/15 ring-1 ring-accent-primary/30' : 'hover:bg-white/[0.06]'
+                className={`relative w-8 h-8 flex items-center justify-center rounded-[6px] transition-colors ${
+                  isActive ? 'bg-accent-primary/20 text-accent-primary' : 'hover:bg-white/[0.06]'
                 }`}
                 title={`${t.nickname || t.label} (${t.status})`}
               >
+                {isActive && (
+                  <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r bg-accent-primary" />
+                )}
                 <div className={`w-2.5 h-2.5 rounded-full ${t.color_tag || STATUS_COLORS[t.status]}`} />
                 {hasUnread && (
-                  <div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-accent-primary animate-pulse" />
+                  <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent-primary animate-pulse" />
                 )}
               </button>
             );
           })}
         </div>
-        <div className="h-px w-6 bg-border my-1" />
-        <button onClick={() => openWorkspaceModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Workspaces"><FolderOpen size={14} /></button>
-        <button onClick={() => openSnippetsModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Snippets"><FileText size={14} /></button>
-        <button onClick={() => openSessionHistory()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Session History"><Clock size={14} /></button>
-        <button onClick={() => openProfileModal()} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors" title="Profiles"><Settings size={14} /></button>
-        <button onClick={toggleSidebarCollapse} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors mt-1" title="Expand sidebar"><ChevronsRight size={14} /></button>
+        <div className="h-px w-6 bg-[var(--ij-divider-soft)] my-2" />
+        <button onClick={() => openWorkspaceModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Workspaces"><FolderOpen size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openSnippetsModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Snippets"><FileText size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openSessionHistory()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Session History"><Clock size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openProfileModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Profiles"><Settings size={14} strokeWidth={1.75} /></button>
+        <button onClick={toggleSidebarCollapse} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors mt-1" title="Expand sidebar"><ChevronsRight size={14} strokeWidth={1.75} /></button>
       </div>
     );
   }
 
-  // ─── Full expanded mode ───
+  // ─── Full expanded mode (IntelliJ tool window) ───
   return (
-    <div className="h-full bg-elevation-1 border-r border-border flex flex-col">
-      {/* Header */}
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleNewTerminal}
-            className="flex-1 flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white py-2 px-4 rounded-lg font-medium text-[13px] transition-colors"
-          >
-            <Plus size={16} />
-            New Terminal
-          </button>
-          <button
-            onClick={toggleSidebarCollapse}
-            className="p-2 rounded-lg hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
-            title="Collapse sidebar"
-          >
-            <ChevronsLeft size={14} />
-          </button>
-        </div>
+    <div className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col">
+      {/* Tool-window header */}
+      <div className="flex items-center justify-between h-[30px] px-3 border-b border-[var(--ij-divider-soft)]">
+        <span className="text-text-secondary text-[11px] font-semibold uppercase tracking-[0.06em]">
+          Terminals
+        </span>
+        <button
+          onClick={toggleSidebarCollapse}
+          className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+          title="Collapse sidebar"
+        >
+          <ChevronsLeft size={13} strokeWidth={1.75} />
+        </button>
+      </div>
 
-        <div className="mt-3 relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+      {/* Actions + search */}
+      <div className="px-2 pt-2 pb-2 border-b border-[var(--ij-divider-soft)]">
+        <button
+          onClick={handleNewTerminal}
+          className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-8 px-3 rounded-[6px] font-medium text-[12.5px] transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+        >
+          <Plus size={14} strokeWidth={2.25} />
+          New Terminal
+        </button>
+
+        <div className="mt-2 relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
           <input
             type="text"
             placeholder="Filter terminals..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-elevation-0 ring-1 ring-border-light rounded-lg py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-border-focus transition-colors"
+            className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 transition-colors"
           />
         </div>
       </div>
@@ -148,14 +156,17 @@ export function Sidebar() {
             }}
             onDragEnd={() => setDraggingId(null)}
             onClick={() => setActiveTerminal(terminal.id)}
-            className={`group relative py-2.5 px-3 rounded-md mb-0.5 cursor-pointer transition-colors ${
+            className={`group relative py-2 pl-3 pr-2 rounded-[4px] mb-px cursor-pointer transition-colors ${
               draggingId === terminal.id ? 'opacity-40' : ''
             } ${
               activeTerminalId === terminal.id
-                ? 'bg-white/[0.06] border-l-2 border-l-accent-primary'
-                : 'hover:bg-white/[0.04] border-l-2 border-l-transparent'
+                ? 'bg-accent-primary/18 text-text-primary'
+                : 'hover:bg-white/[0.045]'
             }`}
           >
+            {activeTerminalId === terminal.id && (
+              <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r bg-accent-primary" />
+            )}
             <div className="flex items-start gap-2.5">
               <GripVertical size={12} className="mt-1.5 text-text-tertiary opacity-0 group-hover:opacity-50 flex-shrink-0 cursor-grab" />
               {/* Color Tag & Status & Unread */}
@@ -380,53 +391,53 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="p-2 border-t border-border space-y-0.5">
+      {/* Footer — tool links */}
+      <div className="p-1.5 border-t border-[var(--ij-divider-soft)] space-y-px">
         <button
           onClick={() => openWorkspaceModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <FolderOpen size={13} />
           Workspaces
         </button>
         <button
           onClick={() => openSessionHistory()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <Clock size={13} />
           Session History
         </button>
         <button
           onClick={() => openSnippetsModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <FileText size={13} />
           Snippets
         </button>
         <button
           onClick={() => openSessionTimeline()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <Clock size={13} />
           Session Timeline
         </button>
         <button
           onClick={() => openClaudeConfig()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <Settings size={13} />
           Claude Config
         </button>
         <button
           onClick={() => openMemoryEditor()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <Brain size={13} />
           Memory Editor
         </button>
         <button
           onClick={() => openProfileModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
           <span className="w-[13px]" aria-hidden="true" />
           Manage Profiles

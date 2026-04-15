@@ -289,7 +289,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-lg">
+    <div className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px] ring-1 ring-black/60">
       <AnimatePresence>
         {showSetup && (
           <SetupWizard onComplete={() => setShowSetup(false)} />

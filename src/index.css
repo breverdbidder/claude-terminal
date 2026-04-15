@@ -123,13 +123,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Elevation system — structured surface hierarchy */
+/* Elevation system — IntelliJ IDEA 2026.1 "New UI" (Dark) */
 :root {
-  --elevation-0: #0E0E0E;  /* App background */
-  --elevation-1: #161616;  /* Sidebar, tab bar, status bar */
-  --elevation-2: #1E1E1E;  /* Cards, panels */
-  --elevation-3: #262626;  /* Floating overlays, dropdowns */
-  --elevation-4: #2E2E2E;  /* Modals, command palette */
+  --elevation-0: #1E1F22;  /* Editor / app background */
+  --elevation-1: #2B2D30;  /* Tool windows, sidebar, tab bar, status bar */
+  --elevation-2: #393B40;  /* Cards, hovered rows, inline panels */
+  --elevation-3: #43454A;  /* Floating overlays, dropdowns */
+  --elevation-4: #4E5157;  /* Modals, command palette */
+
+  /* IntelliJ component tokens */
+  --ij-stripe: #3574F0;          /* Selection / focus stripe */
+  --ij-tab-underline: #3574F0;   /* Active tab underline */
+  --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
+  --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
 }
 
 * {
@@ -146,15 +152,17 @@ html, body, #root {
 }
 
 body {
-  font-feature-settings: 'cv02', 'cv03', 'cv04';
-  letter-spacing: 0.01em;
-  line-height: 1.5;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss03';
+  letter-spacing: 0.005em;
+  line-height: 1.45;
+  color: #DFE1E5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — IntelliJ New UI feel (thin, muted, visible on hover) */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -162,12 +170,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
+  background: rgba(143, 146, 152, 0.22);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: rgba(143, 146, 152, 0.42);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Terminal styles */
@@ -181,7 +197,7 @@ body {
 
 /* Themed xterm scrollbar */
 .xterm-viewport::-webkit-scrollbar {
-  width: 5px;
+  width: 10px;
 }
 
 .xterm-viewport::-webkit-scrollbar-track {
@@ -189,12 +205,16 @@ body {
 }
 
 .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #2E2E2E;
-  border-radius: 3px;
+  background: rgba(143, 146, 152, 0.22);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #3A3A3A;
+  background: rgba(143, 146, 152, 0.42);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 /* Enhanced cursor visibility */

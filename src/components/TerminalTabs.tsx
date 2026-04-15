@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence, Reorder } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
+import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -96,30 +97,30 @@ export function TerminalTabs() {
     return (
       <div className="h-full flex flex-col">
         {/* Split Toolbar */}
-        <div className="h-10 bg-bg-secondary border-b border-border flex items-center justify-between px-3">
+        <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
           <div className="flex items-center gap-2">
-            <SplitSquareHorizontal size={14} className="text-accent-primary" />
+            <SplitSquareHorizontal size={13} className="text-accent-primary" strokeWidth={1.75} />
             <span className="text-text-primary text-[12px] font-medium">Split View</span>
             <span className="text-text-tertiary text-[11px]">
               {terminals.get(splitTerminalIds[0])?.config.nickname || terminals.get(splitTerminalIds[0])?.config.label}
-              {' | '}
+              {' · '}
               {terminals.get(splitTerminalIds[1])?.config.nickname || terminals.get(splitTerminalIds[1])?.config.label}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setSplitOrientation(splitOrientation === 'horizontal' ? 'vertical' : 'horizontal')}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-text-secondary hover:bg-white/[0.04] transition-colors"
+              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
               title="Toggle orientation"
             >
-              <RotateCw size={12} />
+              <RotateCw size={12} strokeWidth={1.75} />
               {splitOrientation === 'horizontal' ? 'Vertical' : 'Horizontal'}
             </button>
             <button
               onClick={clearSplit}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-text-secondary hover:bg-white/[0.04] transition-colors"
+              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
             >
-              <X size={12} />
+              <X size={12} strokeWidth={1.75} />
               Exit Split
             </button>
           </div>
@@ -143,15 +144,15 @@ export function TerminalTabs() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab Bar */}
-      <div className="h-10 bg-elevation-1 border-b border-border flex items-center justify-between px-1">
+      {/* Tab Bar — IntelliJ editor tabs */}
+      <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
             <button
               onClick={() => scrollTabs('left')}
               className="absolute left-0 z-10 h-full px-1 flex items-center bg-gradient-to-r from-elevation-1 via-elevation-1/90 to-transparent"
             >
-              <ChevronLeft size={14} className="text-text-secondary" />
+              <ChevronLeft size={14} className="text-text-secondary" strokeWidth={1.75} />
             </button>
           )}
           <Reorder.Group
@@ -179,14 +180,18 @@ export function TerminalTabs() {
                   onDragOver={(e) => handleTabDragOver(e, terminal.id)}
                   onDragLeave={handleTabDragLeave}
                   onDrop={(e) => handleTabDrop(e, terminal.id)}
-                  className={`group relative flex items-center gap-2 px-3 h-10 text-[12px] transition-colors border-t-2 ${
+                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] transition-colors ${
                     splitDropTargetId === terminal.id
-                      ? 'bg-accent-primary/10 text-accent-primary border-t-accent-primary'
+                      ? 'bg-accent-primary/12 text-accent-primary'
                       : activeTerminalId === terminal.id
-                        ? 'bg-bg-primary text-text-primary border-t-accent-primary'
-                        : 'hover:bg-white/[0.04] text-text-secondary border-t-transparent'
+                        ? 'bg-elevation-0 text-text-primary'
+                        : 'hover:bg-white/[0.045] text-text-secondary'
                   }`}
                 >
+                  {/* IntelliJ-style bottom underline for active tab */}
+                  {(activeTerminalId === terminal.id || splitDropTargetId === terminal.id) && (
+                    <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
+                  )}
                   {splitDropTargetId === terminal.id && (
                     <SplitSquareHorizontal size={12} className="text-accent-primary flex-shrink-0 animate-pulse" />
                   )}
@@ -275,30 +280,30 @@ export function TerminalTabs() {
           )}
           <button
             onClick={handleNewTab}
-            className="p-1.5 rounded hover:bg-white/[0.04] text-text-tertiary hover:text-text-secondary transition-colors flex-shrink-0 ml-1"
+            className="w-7 h-7 ml-0.5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
             title="New Terminal"
           >
-            <Plus size={14} />
+            <Plus size={14} strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Grid Mode Toggle */}
-        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+        <div className="flex items-center gap-1 ml-2 mr-1 flex-shrink-0">
           {gridTerminalIds.length > 0 && (
-            <span className="text-[11px] text-text-tertiary mr-1">
+            <span className="text-[10.5px] text-text-tertiary mr-1 uppercase tracking-wide">
               {gridTerminalIds.length} in grid
             </span>
           )}
           <button
             onClick={toggleGridMode}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] transition-colors ${
+            className={`flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[11.5px] font-medium transition-colors ${
               gridTerminalIds.length > 0
-                ? 'bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/20'
-                : 'hover:bg-white/[0.04] text-text-secondary'
+                ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25'
+                : 'hover:bg-white/[0.06] text-text-secondary hover:text-text-primary'
             }`}
             title="Toggle Grid View"
           >
-            <Grid3X3 size={14} />
+            <Grid3X3 size={13} strokeWidth={1.75} />
             <span className="hidden sm:inline">Grid</span>
           </button>
         </div>
@@ -325,21 +330,43 @@ export function TerminalTabs() {
             </div>
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">
-              <p className="text-[13px] text-text-tertiary mb-4">Press {isMac ? 'Cmd' : 'Ctrl'}+Shift+N to start a new terminal</p>
-              <div className="flex gap-3">
+              <img
+                src={appIconUrl}
+                alt=""
+                className="w-12 h-12 rounded-[8px] mb-5 select-none shadow-[0_2px_12px_rgba(0,0,0,0.35)]"
+                draggable={false}
+                style={{ imageRendering: 'pixelated' }}
+              />
+              <p className="text-[13px] text-text-primary font-medium mb-1">No active terminal</p>
+              <p className="text-[12px] text-text-tertiary mb-5 flex items-center">
+                <span className="mr-1.5">Press</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
+                  {isMac ? '⌘' : 'Ctrl'}
+                </kbd>
+                <span className="mx-1 text-text-tertiary/60">+</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
+                  {isMac ? '⇧' : 'Shift'}
+                </kbd>
+                <span className="mx-1 text-text-tertiary/60">+</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
+                  N
+                </kbd>
+                <span className="ml-2">to start one</span>
+              </p>
+              <div className="flex gap-2">
                 <button
                   onClick={handleNewTab}
-                  className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white py-2 px-5 rounded-md text-[13px] font-medium transition-colors"
+                  className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
                 >
-                  <Plus size={16} />
+                  <Plus size={14} strokeWidth={2.25} />
                   New Terminal
                 </button>
                 {terminalList.length > 0 && (
                   <button
                     onClick={toggleGridMode}
-                    className="flex items-center gap-2 ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary py-2 px-5 rounded-md text-[13px] font-medium transition-colors"
+                    className="flex items-center gap-2 ring-1 ring-inset ring-[var(--ij-divider)] hover:bg-white/[0.05] text-text-primary h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors"
                   >
-                    <Grid3X3 size={16} />
+                    <Grid3X3 size={14} strokeWidth={1.75} />
                     Grid View
                   </button>
                 )}

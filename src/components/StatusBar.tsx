@@ -70,16 +70,16 @@ export function StatusBar() {
   const modelInfo = modelKey ? MODEL_COLORS[modelKey] : null;
 
   return (
-    <div className="h-6 flex items-center justify-between px-2 bg-elevation-1 border-t border-border text-[11px] select-none shrink-0">
+    <div className="h-[22px] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none shrink-0">
       {/* Left side */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-0.5">
         {/* Terminal count */}
         <button
           onClick={toggleSidebar}
-          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+          className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
           title="Toggle sidebar"
         >
-          <Terminal size={12} />
+          <Terminal size={11} strokeWidth={1.75} />
           <span>
             {runningCount > 0
               ? `${runningCount}/${terminalCount} running`
@@ -87,43 +87,46 @@ export function StatusBar() {
           </span>
         </button>
 
+        <span className="text-text-tertiary/50 px-1">·</span>
+
         {/* Active terminal status */}
         {activeTerminal && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-text-tertiary">|</span>
+          <div className="flex items-center gap-1.5 h-[18px] px-1.5">
             <div
               className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[activeStatus]}`}
               title={activeStatus}
             />
-            <span className={`${STATUS_COLORS[activeStatus]} font-medium`}>
+            <span className={`${STATUS_COLORS[activeStatus]} font-medium truncate max-w-[180px]`}>
               {activeTerminal.config.nickname || activeTerminal.config.label}
             </span>
           </div>
         )}
 
+        {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
+
         {/* Grid/Split indicator */}
         <button
           onClick={toggleGridMode}
-          className={`flex items-center gap-1 transition-colors ${
+          className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] transition-colors ${
             gridMode
-              ? 'text-accent-primary'
-              : 'text-text-tertiary hover:text-text-secondary'
+              ? 'text-accent-primary hover:bg-accent-primary/12'
+              : 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
           }`}
           title={gridMode ? 'Exit grid mode' : 'Enter grid mode'}
         >
-          {gridMode ? <LayoutGrid size={11} /> : <Columns size={11} />}
+          {gridMode ? <LayoutGrid size={10} strokeWidth={1.75} /> : <Columns size={10} strokeWidth={1.75} />}
           <span>{gridMode ? 'Grid' : 'Tabs'}</span>
         </button>
       </div>
 
       {/* Right side */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-0.5">
         {/* Model indicator */}
         {modelInfo && (
           <div
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${modelInfo.bg}`}
+            className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] ${modelInfo.bg}`}
           >
-            <Cpu size={10} className={modelInfo.text} />
+            <Cpu size={10} className={modelInfo.text} strokeWidth={1.75} />
             <span className={`${modelInfo.text} font-medium`}>
               {modelInfo.label}
             </span>
@@ -133,30 +136,28 @@ export function StatusBar() {
         {/* Notifications toggle */}
         <button
           onClick={() => setNotifyOnFinish(!notifyOnFinish)}
-          className={`flex items-center transition-colors ${
-            notifyOnFinish
-              ? 'text-text-secondary hover:text-text-primary'
-              : 'text-text-tertiary hover:text-text-secondary'
+          className={`flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
+            notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
           }`}
           title={notifyOnFinish ? 'Notifications on' : 'Notifications off'}
         >
-          {notifyOnFinish ? <Bell size={12} /> : <BellOff size={12} />}
+          {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
         </button>
 
         {/* Claude version */}
         {claudeVersion && (
           <button
             onClick={openSettings}
-            className="flex items-center gap-1 text-text-tertiary hover:text-text-secondary transition-colors"
+            className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary transition-colors"
             title="Open settings"
           >
-            <ArrowDownCircle size={10} />
+            <ArrowDownCircle size={10} strokeWidth={1.75} />
             <span>Claude {claudeVersion}</span>
           </button>
         )}
 
         {/* App version */}
-        <span className="text-text-tertiary" title={`ClaudeTerminal v${appVersion}`}>
+        <span className="text-text-tertiary px-1.5 font-mono" title={`ClaudeTerminal v${appVersion}`}>
           v{appVersion}
         </span>
       </div>
