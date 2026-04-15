@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.19.0",
+    "date": "2026-04-15",
+    "features": [
+      { "title": "IntelliJ IDEA 2026.1 inspired UI refresh", "description": "New dark neutral palette, IntelliJ-blue accent, compact toolbar with project/branch breadcrumb, and underline-style terminal tabs" },
+      { "title": "Redesigned sidebar as a tool window", "description": "Uppercase section header, 2px accent selection stripe, and softer in-panel dividers" },
+      { "title": "Compact status bar", "description": "22px dense layout with grouped widgets matching IntelliJ's status line" },
+      { "title": "Refined empty state", "description": "Platform-aware keyboard shortcut hint (Ctrl+Shift+N on Windows, ⌘⇧N on macOS)" }
+    ]
+  },
+  {
     "version": "1.18.3",
     "date": "2026-04-12",
     "features": [
