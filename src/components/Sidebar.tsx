@@ -384,50 +384,51 @@ export function Sidebar() {
       <div className="p-2 border-t border-border space-y-0.5">
         <button
           onClick={() => openWorkspaceModal()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <FolderOpen size={13} />
           Workspaces
         </button>
         <button
           onClick={() => openSessionHistory()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <Clock size={13} />
           Session History
         </button>
         <button
           onClick={() => openSnippetsModal()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <FileText size={13} />
           Snippets
         </button>
         <button
           onClick={() => openSessionTimeline()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <Clock size={13} />
           Session Timeline
         </button>
         <button
           onClick={() => openClaudeConfig()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <Settings size={13} />
           Claude Config
         </button>
         <button
           onClick={() => openMemoryEditor()}
-          className="w-full flex items-center justify-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
           <Brain size={13} />
           Memory Editor
         </button>
         <button
           onClick={() => openProfileModal()}
-          className="w-full text-text-secondary hover:text-text-primary text-[12px] py-1.5 hover:bg-white/[0.04] rounded-md transition-colors"
+          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1.5 px-2 hover:bg-white/[0.04] rounded-md transition-colors"
         >
+          <span className="w-[13px]" aria-hidden="true" />
           Manage Profiles
         </button>
       </div>
