@@ -77,6 +77,26 @@ export function useKeyboardShortcuts() {
         if (activeId) useTerminalStore.getState().closeTerminal(activeId);
       }
 
+      // Duplicate active terminal: Ctrl+Shift+D
+      if (ctrl && shift && e.key === 'D') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (activeId) {
+          const instance = terminalsRef.current.get(activeId);
+          if (instance) {
+            const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+            useTerminalStore.getState().createTerminal(
+              label,
+              working_directory,
+              claude_args,
+              env_vars,
+              color_tag ?? undefined,
+              nickname ?? undefined,
+            );
+          }
+        }
+      }
+
       if (ctrl && e.key === ',') {
         e.preventDefault();
         useAppStore.getState().openSettings();
