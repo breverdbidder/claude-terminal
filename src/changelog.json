@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.19.2",
+    "date": "2026-04-17",
+    "features": [
+      { "title": "Active user telemetry", "description": "Anonymous heartbeat every 5 minutes to track active users (opt-out in Settings)" },
+      { "title": "Minor UI cleanup", "description": "Removed unused sidebar state from titlebar component" }
+    ]
+  },
+  {
     "version": "1.19.1",
     "date": "2026-04-17",
     "features": [

@@ -84,7 +84,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, telemetryEnabled, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -125,12 +125,20 @@ function App() {
     checkWhatsNew();
   }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
 
-  // Telemetry heartbeat — fire once on startup
+  // Telemetry heartbeat — fire on startup then every 5 minutes
   useEffect(() => {
     if (showSetup !== false) return;
-    getVersion().then((appVersion) => {
-      invoke('send_telemetry_heartbeat', { enabled: telemetryEnabled, appVersion }).catch(() => {});
-    });
+
+    const sendHeartbeat = () => {
+      const enabled = useAppStore.getState().telemetryEnabled;
+      getVersion().then((appVersion) => {
+        invoke('send_telemetry_heartbeat', { enabled, appVersion }).catch(() => {});
+      });
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [showSetup]);
 
   useEffect(() => {

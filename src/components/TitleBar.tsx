@@ -38,7 +38,6 @@ export function TitleBar() {
     toggleOrchestration,
     openSettings,
     openCommandPalette,
-    sidebarOpen,
     hintsOpen,
     changesOpen,
     orchestrationOpen,
