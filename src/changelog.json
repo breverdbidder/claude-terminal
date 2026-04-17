@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.19.3",
+    "date": "2026-04-17",
+    "features": [
+      { "title": "Fix analytics worker URL", "description": "Corrected telemetry endpoint for usage tracking" }
+    ]
+  },
+  {
     "version": "1.19.2",
     "date": "2026-04-17",
     "features": [

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-const WORKER_URL: &str = "https://ct-analytics.claudeterminal.workers.dev";
+const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
 
 #[derive(Serialize)]
 struct HeartbeatPayload {
