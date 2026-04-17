@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence, Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -36,6 +36,21 @@ export function TerminalTabs() {
       setSplitTerminals([activeTerminalId, terminalId]);
       setSplitMode(true);
     }
+  };
+
+  const { createTerminal } = useTerminalStore();
+  const handleDuplicate = (terminalId: string) => {
+    const instance = terminals.get(terminalId);
+    if (!instance) return;
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+    createTerminal(
+      label,
+      working_directory,
+      claude_args,
+      env_vars,
+      color_tag ?? undefined,
+      nickname ?? undefined,
+    );
   };
 
   const handleTabDragOver = useCallback((e: React.DragEvent, tabTerminalId: string) => {
@@ -242,6 +257,16 @@ export function TerminalTabs() {
                         <SplitSquareHorizontal size={12} />
                       </button>
                     )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDuplicate(terminal.id);
+                      }}
+                      className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+                      title="Duplicate terminal"
+                    >
+                      <Copy size={12} />
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
