@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight, UserCog } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
@@ -439,7 +439,7 @@ export function Sidebar() {
           onClick={() => openProfileModal()}
           className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
         >
-          <span className="w-[13px]" aria-hidden="true" />
+          <UserCog size={13} />
           Manage Profiles
         </button>
       </div>

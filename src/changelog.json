@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.19.1",
+    "date": "2026-04-17",
+    "features": [
+      { "title": "Duplicate Terminal", "description": "Clone the active terminal's config (working directory, args, env vars, color tag, nickname) via Ctrl+Shift+D or the copy icon on tab hover" },
+      { "title": "App logo in titlebar", "description": "Replaced the sidebar toggle icon with the ClaudeTerminal app logo" },
+      { "title": "Manage Profiles icon", "description": "Added UserCog icon to the Manage Profiles sidebar button for consistency" }
+    ]
+  },
+  {
     "version": "1.19.0",
     "date": "2026-04-15",
     "features": [

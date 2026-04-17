@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import appIcon from '../assets/app-icon.png';
 import {
-  PanelLeft,
   Lightbulb,
   FileDiff,
   Users,
@@ -103,10 +103,10 @@ export function TitleBar() {
 
         <button
           onClick={toggleSidebar}
-          className={iconBtn(sidebarOpen)}
+          className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
           title="Toggle sidebar (Ctrl+B)"
         >
-          <PanelLeft size={15} strokeWidth={1.75} />
+          <img src={appIcon} alt="ClaudeTerminal" className="w-[20px] h-[20px]" />
         </button>
 
         {/* Project breadcrumb — IntelliJ main-toolbar project widget */}
