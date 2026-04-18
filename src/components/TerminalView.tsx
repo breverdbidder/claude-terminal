@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
@@ -18,8 +19,15 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
-  const { terminals, writeToTerminal, resizeTerminal, setXterm } = useTerminalStore();
-  const instance = terminals.get(terminalId);
+  // Narrow selector — only re-render when THIS terminal's instance changes,
+  // not on every output-unread-set update for other terminals.
+  const instance = useTerminalStore((s) => s.terminals.get(terminalId));
+  // Stable action refs: these are static on the store so pulling them via
+  // getState avoids putting them in the effect dep array (which was causing
+  // the xterm instance to tear down on every unrelated store update).
+  const writeToTerminal = useTerminalStore.getState().writeToTerminal;
+  const resizeTerminal = useTerminalStore.getState().resizeTerminal;
+  const setXterm = useTerminalStore.getState().setXterm;
 
   const toggleSearch = useCallback(() => {
     setSearchVisible(prev => !prev);
@@ -59,6 +67,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       cursorStyle: 'bar',
       cursorWidth: 2,
       allowProposedApi: true,
+      // 5000 lines is ample for reading claude output and caps per-terminal
+      // memory — at 8 terminals * default 1000 we'd be underprovisioned.
+      scrollback: 5000,
     });
 
     const fitAddon = new FitAddon();
@@ -75,6 +86,23 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     searchAddonRef.current = searchAddon;
 
     terminal.open(containerRef.current);
+
+    // Attach WebGL renderer for GPU-accelerated rendering. Gracefully fall
+    // back to the default DOM renderer if the context is lost or unavailable
+    // (older GPUs, headless CI, etc.).
+    let webglAddon: WebglAddon | null = null;
+    try {
+      webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        webglAddon?.dispose();
+        webglAddon = null;
+      });
+      terminal.loadAddon(webglAddon);
+    } catch (err) {
+      console.warn('WebGL renderer unavailable, using DOM fallback:', err);
+      webglAddon = null;
+    }
+
     fitAddon.fit();
 
     // Auto-focus so keyboard input works immediately without requiring a click
@@ -154,9 +182,14 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       terminal.textarea?.removeEventListener('blur', handleBlur);
       searchAddonRef.current = null;
       terminalRef.current = null;
+      webglAddon?.dispose();
       terminal.dispose();
     };
-  }, [terminalId, instance, writeToTerminal, resizeTerminal, setXterm, toggleSearch]);
+    // Intentionally omit store action refs from deps — they are stable via
+    // getState() and including them caused the xterm instance to be recreated
+    // on every unrelated store update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terminalId, !!instance, toggleSearch]);
 
   return (
     <div className="h-full w-full bg-bg-primary relative flex flex-col">

@@ -208,14 +208,17 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   handleTerminalOutput: (id, data) => {
-    const { terminals, activeTerminalId } = get();
-    const instance = terminals.get(id);
+    const state = get();
+    const instance = state.terminals.get(id);
     if (instance?.xterm) {
       instance.xterm.write(data);
     }
-    if (id !== activeTerminalId) {
-      set((state) => {
-        const newUnread = new Set(state.unreadTerminalIds);
+    // Short-circuit — if the terminal is already marked unread, skip the
+    // Set clone + set() call. At streaming rates this used to fire thousands
+    // of times per second and re-render every subscriber.
+    if (id !== state.activeTerminalId && !state.unreadTerminalIds.has(id)) {
+      set((s) => {
+        const newUnread = new Set(s.unreadTerminalIds);
         newUnread.add(id);
         return { unreadTerminalIds: newUnread };
       });

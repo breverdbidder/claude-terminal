@@ -1,7 +1,7 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -193,11 +193,16 @@ impl TerminalManager {
         // Spawn reader thread
         let terminal_id = id.clone();
         let reader_handle = std::thread::spawn(move || {
-            let mut buf = [0u8; 8192];
+            // 32 KB buffer — amortizes syscall overhead for high-throughput output
+            // and reduces the number of IPC messages emitted to the frontend.
+            let mut buf = [0u8; 32 * 1024];
+            // Wrap the log file in a BufWriter so fs writes batch instead of
+            // issuing one syscall per PTY chunk.
             let mut log_file = log_file_path.and_then(|path| {
                 std::fs::File::create(&path)
                     .map_err(|e| eprintln!("Failed to create log file: {}", e))
                     .ok()
+                    .map(|f| BufWriter::with_capacity(64 * 1024, f))
             });
             loop {
                 match reader.read(&mut buf) {
@@ -207,7 +212,7 @@ impl TerminalManager {
                         // Write ANSI-stripped output to log file
                         if let Some(ref mut file) = log_file {
                             let stripped = strip_ansi_escapes::strip(&data);
-                            let _ = std::io::Write::write_all(file, &stripped);
+                            let _ = file.write_all(&stripped);
                         }
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() {
                             break;
@@ -222,6 +227,10 @@ impl TerminalManager {
                         break;
                     }
                 }
+            }
+            // Flush any pending buffered log writes before the thread exits.
+            if let Some(ref mut file) = log_file {
+                let _ = file.flush();
             }
         });
 

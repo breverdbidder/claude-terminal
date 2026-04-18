@@ -22,7 +22,10 @@ pub async fn create_terminal(
     state: State<'_, AppState>,
     request: CreateTerminalRequest,
 ) -> Result<crate::terminal::TerminalConfig, String> {
-    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(100);
+    // Channel sized for burst output — Claude Code streaming can easily push
+    // hundreds of chunks/sec per terminal. 100 caused backpressure into the
+    // PTY reader thread under load.
+    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
     // Compute log file path
     let log_path = {
@@ -770,7 +773,7 @@ async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Re
         std::path::Path::new(&config.working_directory)
             .canonicalize()
             .ok()
-            .map(|known| canonical_path.starts_with(&known) || known.starts_with(&canonical_path))
+            .map(|known| canonical_path.starts_with(&known))
             .unwrap_or(false)
     });
 
@@ -1086,7 +1089,16 @@ pub async fn read_log_file(path: String) -> Result<String, String> {
     if !canonical_path.starts_with(&canonical_logs) {
         return Err("Access denied: path is not under logs directory".to_string());
     }
-    std::fs::read_to_string(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))
+    // Cap at 2 MB — prevents DoS via huge/symlinked logs and matches
+    // what the UI can reasonably render in a single read.
+    const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
+    let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))?;
+    let slice = if bytes.len() > MAX_LOG_BYTES {
+        &bytes[bytes.len() - MAX_LOG_BYTES..]
+    } else {
+        &bytes[..]
+    };
+    Ok(String::from_utf8_lossy(slice).into_owned())
 }
 
 #[command]
@@ -1214,11 +1226,23 @@ fn validate_filename(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Maximum size for ~/.claude/settings.json — 1 MB is generous for a JSON config
+/// and prevents a compromised renderer (or malformed file) from exhausting memory.
+const MAX_CLAUDE_SETTINGS_BYTES: u64 = 1024 * 1024;
+
 #[command]
 pub async fn read_claude_settings() -> Result<String, String> {
     let settings_path = get_claude_dir()?.join("settings.json");
     if !settings_path.exists() {
         return Ok("{}".to_string());
+    }
+    let meta = std::fs::metadata(&settings_path)
+        .map_err(|e| format!("Failed to stat settings.json: {}", e))?;
+    if meta.len() > MAX_CLAUDE_SETTINGS_BYTES {
+        return Err(format!(
+            "settings.json is larger than allowed maximum ({} bytes)",
+            MAX_CLAUDE_SETTINGS_BYTES
+        ));
     }
     std::fs::read_to_string(&settings_path)
         .map_err(|e| format!("Failed to read settings.json: {}", e))
@@ -1226,6 +1250,12 @@ pub async fn read_claude_settings() -> Result<String, String> {
 
 #[command]
 pub async fn write_claude_settings(content: String) -> Result<(), String> {
+    if content.len() as u64 > MAX_CLAUDE_SETTINGS_BYTES {
+        return Err(format!(
+            "settings content exceeds maximum size ({} bytes)",
+            MAX_CLAUDE_SETTINGS_BYTES
+        ));
+    }
     // Validate it's valid JSON
     serde_json::from_str::<serde_json::Value>(&content)
         .map_err(|e| format!("Invalid JSON: {}", e))?;
@@ -1553,15 +1583,59 @@ pub struct ClaudeMdInfo {
 }
 
 /// Validates that a path is under ~/.claude/
+/// Rejects traversal components (`..`, `\0`) and resolves against the canonical
+/// parent directory so not-yet-existing files still get a real containment check.
 fn validate_claude_path(path: &str) -> Result<(), String> {
+    let target = std::path::Path::new(path);
+
+    // Reject path traversal and null-byte components explicitly. canonicalize()
+    // collapses `..` but only when the full path exists, so we also need a
+    // structural check for write paths that don't exist yet.
+    if path.contains('\0') {
+        return Err("Invalid path: null byte".to_string());
+    }
+    for comp in target.components() {
+        if matches!(comp, std::path::Component::ParentDir) {
+            return Err("Invalid path: parent directory traversal not allowed".to_string());
+        }
+    }
+
     let claude_dir = get_claude_dir()?;
     let canonical_claude = claude_dir
         .canonicalize()
         .unwrap_or_else(|_| claude_dir.clone());
-    let target = std::path::Path::new(path);
-    let canonical_target = target
-        .canonicalize()
-        .unwrap_or_else(|_| target.to_path_buf());
+
+    // If the target exists, canonicalize resolves symlinks — strongest check.
+    // Otherwise fall back to canonicalizing the nearest existing ancestor and
+    // re-appending the remaining components (prevents bypass when the file
+    // is about to be created).
+    let canonical_target = match target.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            let mut ancestor = target.to_path_buf();
+            let mut tail: Vec<std::ffi::OsString> = Vec::new();
+            loop {
+                if ancestor.exists() {
+                    break;
+                }
+                match ancestor.file_name() {
+                    Some(name) => tail.push(name.to_os_string()),
+                    None => return Err("Invalid path: cannot resolve".to_string()),
+                }
+                if !ancestor.pop() {
+                    return Err("Invalid path: cannot resolve".to_string());
+                }
+            }
+            let mut resolved = ancestor
+                .canonicalize()
+                .map_err(|e| format!("Invalid path: {}", e))?;
+            for name in tail.into_iter().rev() {
+                resolved.push(name);
+            }
+            resolved
+        }
+    };
+
     if !canonical_target.starts_with(&canonical_claude) {
         return Err("Access denied: path is not under ~/.claude/".to_string());
     }
