@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.19.4",
+    "date": "2026-04-18",
+    "features": [
+      { "title": "Security hardening", "description": "Tightened path-containment validation, reordered updater endpoints so signed GitHub releases are queried first, added size caps on settings and log reads, patched rollup/picomatch advisories" },
+      { "title": "GPU-accelerated terminal rendering", "description": "xterm WebGL renderer with graceful DOM fallback on context loss, scrollback capped at 5000 lines" },
+      { "title": "Smoother multi-terminal output", "description": "Fixed store-selector churn that tore down terminals on unrelated updates and short-circuited duplicate unread-set updates under streaming load" },
+      { "title": "Higher PTY throughput", "description": "Larger read buffer (8KB to 32KB), 10x larger IPC channel, and buffered log writes" },
+      { "title": "Optimized release build", "description": "Rust release profile now compiled with opt-level=3 + LTO + codegen-units=1 for runtime speed over binary size" }
+    ]
+  },
+  {
     "version": "1.19.3",
     "date": "2026-04-17",
     "features": [
