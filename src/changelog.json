@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.20.3",
+    "date": "2026-04-20",
+    "features": [
+      { "title": "Operate on nested repos from File Changes", "description": "Pin any repo row (root, nested, worktree) to re-target the panel's commit bar, stage/unstage, stash, and inline diffs to that repo — works even when the active terminal's cwd is not a git repo" },
+      { "title": "Create new branch from the repo dropdown", "description": "New 'Create new branch…' action opens a form with a base-branch select that defaults to master / main / develop when present" },
+      { "title": "Pull a remote branch into current", "description": "New 'Pull into <current>…' action pre-fills the upstream tracking branch and offers merge / rebase / ff-only strategies; refuses to pull when the working tree is dirty" },
+      { "title": "Grid Add All button", "description": "Replaced the grid 'Auto' button with 'Add All' so every active terminal can be loaded into the grid in one click" }
+    ]
+  },
+  {
     "version": "1.20.2",
     "date": "2026-04-20",
     "features": [
