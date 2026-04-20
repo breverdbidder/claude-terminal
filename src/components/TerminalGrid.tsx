@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square } from 'lucide-react';
+import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square, Layers } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
-import { useAppStore, GridLayout, getOptimalLayout } from '../store/appStore';
+import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
 
@@ -268,9 +268,20 @@ export function TerminalGrid() {
     removeFromGrid,
     setGridLayout,
     setGridMode,
+    setGridTerminals,
   } = useAppStore();
-  const { setActiveTerminal } = useTerminalStore();
+  const { terminals, setActiveTerminal } = useTerminalStore();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const allTerminalIds = useMemo(() => Array.from(terminals.keys()), [terminals]);
+  const canAddAll = allTerminalIds.length > 0 && (
+    allTerminalIds.length !== gridTerminalIds.length ||
+    allTerminalIds.some((id, i) => gridTerminalIds[i] !== id)
+  );
+
+  const handleAddAll = useCallback(() => {
+    setGridTerminals(allTerminalIds);
+  }, [allTerminalIds, setGridTerminals]);
 
   const config = GRID_CONFIGS[gridLayout];
   const totalCells = config.cols * config.rows;
@@ -344,13 +355,21 @@ export function TerminalGrid() {
             ))}
           </div>
 
-          {/* Auto Layout Button */}
+          {/* Add All Terminals Button */}
           <button
-            onClick={() => setGridLayout(getOptimalLayout(gridTerminalIds.length))}
-            className="px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors"
-            title="Auto-fit layout"
+            onClick={handleAddAll}
+            disabled={!canAddAll}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+            title={
+              allTerminalIds.length === 0
+                ? 'No active terminals'
+                : allTerminalIds.length > 8
+                  ? `Add first 8 of ${allTerminalIds.length} terminals to grid`
+                  : `Add all ${allTerminalIds.length} terminals to grid`
+            }
           >
-            Auto
+            <Layers size={12} />
+            Add All
           </button>
 
           {/* Exit Grid Mode */}
