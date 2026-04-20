@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.20.2",
+    "date": "2026-04-20",
+    "features": [
+      { "title": "Branch switcher for nested repos", "description": "Each row in the File Changes > Repositories section now opens an inline branch picker — filter, click a branch, one-click checkout against that specific repo (root, nested sub-repo, or linked worktree)" }
+    ]
+  },
+  {
     "version": "1.20.1",
     "date": "2026-04-20",
     "features": [
