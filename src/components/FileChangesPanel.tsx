@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
+import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -49,6 +49,17 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
   untracked: { label: 'Untracked', color: 'text-text-tertiary', icon: <FileQuestion size={14} /> },
 };
 
+interface RepoSelectionCtx {
+  selectedRepoPath: string | null;
+  activePath: string | null;
+  setSelectedRepoPath: (p: string | null) => void;
+}
+const RepoSelectionContext = createContext<RepoSelectionCtx>({
+  selectedRepoPath: null,
+  activePath: null,
+  setSelectedRepoPath: () => {},
+});
+
 export function FileChangesPanel() {
   const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
   const terminals = useTerminalStore((s) => s.terminals);
@@ -69,6 +80,13 @@ export function FileChangesPanel() {
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
   const [reposExpanded, setReposExpanded] = useState(true);
+  const [selectedRepoPath, setSelectedRepoPath] = useState<string | null>(null);
+
+  const activePath = selectedRepoPath ?? activeCwd;
+  const usingSelectedRepo = selectedRepoPath !== null && !!activeCwd && !pathsEqual(selectedRepoPath, activeCwd);
+
+  // Reset selection when the active terminal changes
+  useEffect(() => { setSelectedRepoPath(null); }, [activeTerminalId]);
 
   // Commit / push / stash state
   const [commitMessage, setCommitMessage] = useState('');
@@ -127,12 +145,12 @@ export function FileChangesPanel() {
   }, []);
 
   useEffect(() => {
-    if (!activeCwd || !result?.is_git_repo) { setStashes([]); return; }
-    fetchStashes(activeCwd);
-  }, [activeCwd, result?.is_git_repo, changesRefreshTrigger, fetchStashes]);
+    if (!activePath || !result?.is_git_repo) { setStashes([]); return; }
+    fetchStashes(activePath);
+  }, [activePath, result?.is_git_repo, changesRefreshTrigger, fetchStashes]);
 
   const handleCommit = useCallback(async (thenPush: boolean, autoStage: AutoStageMode) => {
-    if (!activeCwd) return;
+    if (!activePath) return;
     const msg = commitMessage.trim();
     if (!msg) {
       toast.error('Commit', 'Enter a commit message');
@@ -140,13 +158,13 @@ export function FileChangesPanel() {
     }
     setCommitting(true);
     try {
-      await invoke('git_commit', { path: activeCwd, message: msg, autoStage });
+      await invoke('git_commit', { path: activePath, message: msg, autoStage });
       toast.success('Committed', thenPush ? 'Pushing…' : msg.split('\n')[0]);
       setCommitMessage('');
       if (thenPush) {
         setPushing(true);
         try {
-          await invoke('git_push', { path: activeCwd });
+          await invoke('git_push', { path: activePath });
           toast.success('Pushed', 'Changes pushed to remote');
         } catch (err) {
           toast.error('Push failed', typeof err === 'string' ? err : 'Unknown error');
@@ -160,17 +178,17 @@ export function FileChangesPanel() {
     } finally {
       setCommitting(false);
     }
-  }, [activeCwd, commitMessage, triggerChangesRefreshAction]);
+  }, [activePath, commitMessage, triggerChangesRefreshAction]);
 
   const stageFiles = useCallback(async (files: string[]) => {
-    if (!activeCwd || files.length === 0) return;
+    if (!activePath || files.length === 0) return;
     setStagingPaths((prev) => {
       const next = new Set(prev);
       for (const f of files) next.add(`stage:${f}`);
       return next;
     });
     try {
-      await invoke('git_stage_files', { path: activeCwd, files });
+      await invoke('git_stage_files', { path: activePath, files });
       triggerChangesRefreshAction();
     } catch (err) {
       toast.error('Stage failed', typeof err === 'string' ? err : 'Unknown error');
@@ -181,17 +199,17 @@ export function FileChangesPanel() {
         return next;
       });
     }
-  }, [activeCwd, triggerChangesRefreshAction]);
+  }, [activePath, triggerChangesRefreshAction]);
 
   const unstageFiles = useCallback(async (files: string[]) => {
-    if (!activeCwd || files.length === 0) return;
+    if (!activePath || files.length === 0) return;
     setStagingPaths((prev) => {
       const next = new Set(prev);
       for (const f of files) next.add(`unstage:${f}`);
       return next;
     });
     try {
-      await invoke('git_unstage_files', { path: activeCwd, files });
+      await invoke('git_unstage_files', { path: activePath, files });
       triggerChangesRefreshAction();
     } catch (err) {
       toast.error('Unstage failed', typeof err === 'string' ? err : 'Unknown error');
@@ -202,14 +220,14 @@ export function FileChangesPanel() {
         return next;
       });
     }
-  }, [activeCwd, triggerChangesRefreshAction]);
+  }, [activePath, triggerChangesRefreshAction]);
 
   const handleStash = useCallback(async () => {
-    if (!activeCwd) return;
+    if (!activePath) return;
     setStashing(true);
     try {
       const msg = commitMessage.trim() || null;
-      await invoke('git_stash_push', { path: activeCwd, message: msg, includeUntracked: true });
+      await invoke('git_stash_push', { path: activePath, message: msg, includeUntracked: true });
       toast.success('Stashed', msg ?? 'Working changes stashed');
       setCommitMessage('');
       triggerChangesRefreshAction();
@@ -218,17 +236,17 @@ export function FileChangesPanel() {
     } finally {
       setStashing(false);
     }
-  }, [activeCwd, commitMessage, triggerChangesRefreshAction]);
+  }, [activePath, commitMessage, triggerChangesRefreshAction]);
 
   const runStashOp = useCallback(async (
     op: 'git_stash_apply' | 'git_stash_pop' | 'git_stash_drop',
     reference: string,
     label: string,
   ) => {
-    if (!activeCwd) return;
+    if (!activePath) return;
     setStashActing(`${op}:${reference}`);
     try {
-      await invoke(op, { path: activeCwd, reference });
+      await invoke(op, { path: activePath, reference });
       toast.success(label, `${reference} — done`);
       triggerChangesRefreshAction();
     } catch (err) {
@@ -236,7 +254,7 @@ export function FileChangesPanel() {
     } finally {
       setStashActing(null);
     }
-  }, [activeCwd, triggerChangesRefreshAction]);
+  }, [activePath, triggerChangesRefreshAction]);
 
   // Split worktrees into "linked" (not the main repo) and tag the active one
   const linkedWorktrees = useMemo(
@@ -244,24 +262,26 @@ export function FileChangesPanel() {
     [worktrees]
   );
 
-  const fetchChanges = async () => {
+  const fetchChanges = useCallback(async () => {
     if (!activeTerminalId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await invoke<FileChangesResult>('get_terminal_changes', { id: activeTerminalId });
+      const data = usingSelectedRepo && selectedRepoPath
+        ? await invoke<FileChangesResult>('get_path_changes', { path: selectedRepoPath })
+        : await invoke<FileChangesResult>('get_terminal_changes', { id: activeTerminalId });
       setResult(data);
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTerminalId, selectedRepoPath, usingSelectedRepo]);
 
   useEffect(() => {
     fetchChanges();
     setExpandedFile(null);
-  }, [activeTerminalId, changesRefreshTrigger]);
+  }, [activeTerminalId, changesRefreshTrigger, selectedRepoPath, fetchChanges]);
 
   // Group changes by status
   const stagedChanges = result?.changes.filter((c) => c.staged) ?? [];
@@ -270,6 +290,7 @@ export function FileChangesPanel() {
   const hasUnstaged = unstagedChanges.length > 0;
 
   return (
+    <RepoSelectionContext.Provider value={{ selectedRepoPath, activePath, setSelectedRepoPath }}>
     <div className="h-full bg-bg-secondary border-l border-border flex flex-col">
       {/* Header */}
       <div className="p-3 border-b border-border">
@@ -293,7 +314,25 @@ export function FileChangesPanel() {
             <span className="text-[11px] font-mono">{result.branch}</span>
           </div>
         )}
-        {activeGitInfo?.is_worktree && activeGitInfo.main_repo_path && (
+        {usingSelectedRepo && selectedRepoPath && (
+          <div className="flex items-center justify-between mt-1 bg-accent-primary/10 ring-1 ring-inset ring-accent-primary/30 rounded-[4px] px-2 py-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Pin size={11} className="text-accent-primary flex-shrink-0" strokeWidth={2} />
+              <span className="text-[11px] text-accent-primary truncate" title={selectedRepoPath}>
+                Targeting {selectedRepoPath.replace(/^.*[\\/]/, '')}
+              </span>
+            </div>
+            <button
+              onClick={() => setSelectedRepoPath(null)}
+              className="flex items-center gap-0.5 text-[10.5px] text-text-secondary hover:text-text-primary transition-colors flex-shrink-0 ml-2"
+              title="Clear selection — use the active terminal's repo"
+            >
+              <PinOff size={10} strokeWidth={2} />
+              Clear
+            </button>
+          </div>
+        )}
+        {activeGitInfo?.is_worktree && activeGitInfo.main_repo_path && !usingSelectedRepo && (
           <div className="flex items-center justify-between mt-1">
             <span className="text-text-tertiary text-[11px]">
               Worktree of {activeGitInfo.main_repo_path.replace(/^.*[\\/]/, '')}
@@ -391,8 +430,16 @@ export function FileChangesPanel() {
         )}
 
         {activeTerminalId && result && !result.is_git_repo && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-text-tertiary text-[12px]">Not a git repository</p>
+          <div className="flex items-center justify-center h-full px-4 text-center">
+            <p className="text-text-tertiary text-[12px]">
+              Not a git repository.
+              {repos.length > 0 && (
+                <>
+                  <br />
+                  Pin a nested repository above to commit, push, and manage it here.
+                </>
+              )}
+            </p>
           </div>
         )}
 
@@ -417,6 +464,7 @@ export function FileChangesPanel() {
             expandedFile={expandedFile}
             setExpandedFile={setExpandedFile}
             activeTerminalId={activeTerminalId}
+            pathOverride={usingSelectedRepo ? selectedRepoPath : null}
             stagingPaths={stagingPaths}
             onStage={stageFiles}
             onUnstage={unstageFiles}
@@ -433,6 +481,7 @@ export function FileChangesPanel() {
             expandedFile={expandedFile}
             setExpandedFile={setExpandedFile}
             activeTerminalId={activeTerminalId}
+            pathOverride={usingSelectedRepo ? selectedRepoPath : null}
             stagingPaths={stagingPaths}
             onStage={stageFiles}
             onUnstage={unstageFiles}
@@ -604,6 +653,7 @@ export function FileChangesPanel() {
         </div>
       </div>
     </div>
+    </RepoSelectionContext.Provider>
   );
 }
 
@@ -615,6 +665,7 @@ interface ChangeGroupProps {
   expandedFile: string | null;
   setExpandedFile: (v: string | null) => void;
   activeTerminalId: string | null;
+  pathOverride: string | null;
   stagingPaths: Set<string>;
   onStage: (files: string[]) => void;
   onUnstage: (files: string[]) => void;
@@ -623,7 +674,7 @@ interface ChangeGroupProps {
 
 function ChangeGroup({
   title, count, files, staged, expandedFile, setExpandedFile,
-  activeTerminalId, stagingPaths, onStage, onUnstage, onBulk,
+  activeTerminalId, pathOverride, stagingPaths, onStage, onUnstage, onBulk,
 }: ChangeGroupProps) {
   return (
     <div className="mb-2">
@@ -692,7 +743,7 @@ function ChangeGroup({
             </div>
             {isExpanded && activeTerminalId && (
               <div className="ml-3 mr-1 mb-1 rounded overflow-hidden border border-border/30">
-                <InlineDiffView filePath={file.path} terminalId={activeTerminalId} />
+                <InlineDiffView filePath={file.path} terminalId={activeTerminalId} pathOverride={pathOverride} />
               </div>
             )}
           </div>
@@ -746,28 +797,46 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
   });
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
+  const { selectedRepoPath, activePath, setSelectedRepoPath } = useContext(RepoSelectionContext);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchBase, setNewBranchBase] = useState<string>('');
+  const [pullOpen, setPullOpen] = useState(false);
+  const [remoteRefs, setRemoteRefs] = useState<string[]>([]);
+  const [pullRef, setPullRef] = useState<string>(''); // e.g. "origin/feature-x"
+  const [pullStrategy, setPullStrategy] = useState<'merge' | 'rebase' | 'ff-only'>('merge');
+  const [pulling, setPulling] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const isActiveTarget = activePath != null && pathsEqual(activePath, repo.path);
+  const isPinned = selectedRepoPath != null && pathsEqual(selectedRepoPath, repo.path);
 
   const openMenu = useCallback(async () => {
     setMenuOpen(true);
     setFilter('');
+    setCreateOpen(false);
     setBranchesLoading(true);
     try {
       const list = await invoke<string[]>('get_repo_branches', { path: repo.path });
       setBranches(list);
+      // Pick a sensible default base for new-branch creation
+      const preferred = ['master', 'main', 'develop', 'dev'];
+      const base = preferred.find((p) => list.includes(p)) ?? repo.branch ?? list[0] ?? '';
+      setNewBranchBase(base);
     } catch (err) {
       toast.error('Branches', typeof err === 'string' ? err : 'Failed to list branches');
       setMenuOpen(false);
     } finally {
       setBranchesLoading(false);
     }
-  }, [repo.path]);
+  }, [repo.path, repo.branch]);
 
   const handleCheckout = useCallback(async (branch: string) => {
     if (branch === repo.branch) { setMenuOpen(false); return; }
@@ -786,6 +855,95 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       setCheckoutTarget(null);
     }
   }, [repo.path, repo.branch, repo.is_main_repo, repo.relative_path, activeTerminalId, activeCwd, fetchGitInfo, triggerChangesRefreshAction]);
+
+  const openPullForm = useCallback(async () => {
+    setPullOpen(true);
+    setCreateOpen(false);
+    setPullRef('');
+    try {
+      const [refs, upstream] = await Promise.all([
+        invoke<string[]>('get_repo_remote_refs', { path: repo.path }),
+        invoke<string | null>('get_upstream_branch', { path: repo.path }),
+      ]);
+      setRemoteRefs(refs);
+      // Prefer upstream if it is in the list; else try origin/<current-branch>
+      const candidate = upstream && refs.includes(upstream)
+        ? upstream
+        : (repo.branch && refs.includes(`origin/${repo.branch}`) ? `origin/${repo.branch}` : '');
+      setPullRef(candidate || refs[0] || '');
+    } catch (err) {
+      toast.error('Pull', typeof err === 'string' ? err : 'Failed to list remote branches');
+      setPullOpen(false);
+    }
+  }, [repo.path, repo.branch]);
+
+  const handlePull = useCallback(async () => {
+    if (!pullRef) {
+      toast.error('Pull', 'Select a remote branch');
+      return;
+    }
+    const slashIdx = pullRef.indexOf('/');
+    if (slashIdx <= 0 || slashIdx === pullRef.length - 1) {
+      toast.error('Pull', 'Invalid remote branch format');
+      return;
+    }
+    const remote = pullRef.slice(0, slashIdx);
+    const branch = pullRef.slice(slashIdx + 1);
+
+    setPulling(true);
+    try {
+      const msg = await invoke<string>('git_pull_branch', {
+        path: repo.path,
+        remote,
+        branch,
+        strategy: pullStrategy,
+      });
+      const firstLine = msg.split('\n').find((l) => l.trim().length > 0) ?? 'Pulled';
+      toast.success('Pull', firstLine);
+      setMenuOpen(false);
+      setPullOpen(false);
+      if (activeTerminalId && activeCwd && pathsEqual(activeCwd, repo.path)) {
+        await fetchGitInfo(activeTerminalId);
+      }
+      triggerChangesRefreshAction();
+    } catch (err) {
+      toast.error('Pull failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setPulling(false);
+    }
+  }, [repo.path, pullRef, pullStrategy, activeTerminalId, activeCwd, fetchGitInfo, triggerChangesRefreshAction]);
+
+  const handleCreateBranch = useCallback(async () => {
+    const name = newBranchName.trim();
+    if (!name) {
+      toast.error('Create branch', 'Enter a branch name');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_./-]+$/.test(name)) {
+      toast.error('Create branch', 'Name may only contain letters, numbers, dots, hyphens, underscores, and slashes');
+      return;
+    }
+    setCreating(true);
+    try {
+      await invoke('git_create_branch', {
+        path: repo.path,
+        name,
+        base: newBranchBase || null,
+      });
+      toast.success('Branch created', `${name} (from ${newBranchBase || 'current'})`);
+      setMenuOpen(false);
+      setCreateOpen(false);
+      setNewBranchName('');
+      if (activeTerminalId && activeCwd && pathsEqual(activeCwd, repo.path)) {
+        await fetchGitInfo(activeTerminalId);
+      }
+      triggerChangesRefreshAction();
+    } catch (err) {
+      toast.error('Create branch failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setCreating(false);
+    }
+  }, [repo.path, newBranchName, newBranchBase, activeTerminalId, activeCwd, fetchGitInfo, triggerChangesRefreshAction]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -811,41 +969,70 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
     return branches.filter((b) => b.toLowerCase().includes(q));
   }, [branches, filter]);
 
+  const togglePin = () => {
+    setSelectedRepoPath(isPinned ? null : repo.path);
+  };
+
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        type="button"
-        onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
-        className={`w-full flex items-start gap-1.5 px-2 py-1 rounded-[3px] text-left transition-colors ${
-          menuOpen ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
-        }`}
-        title={`${repo.path}\nClick to switch branch`}
-      >
-        <Icon size={11} className={`mt-[2px] flex-shrink-0 ${branchColor}`} strokeWidth={1.75} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[11.5px] font-mono truncate ${branchColor}`}>
-              {repo.branch || '(detached)'}
-            </span>
-            {repo.dirty && <CircleDot size={9} className="text-warning flex-shrink-0" strokeWidth={2} />}
-            {repo.ahead > 0 && (
-              <span className="flex items-center text-[10px] text-text-tertiary">
-                <ArrowUp size={9} strokeWidth={2} />{repo.ahead}
+    <div
+      className={`group relative rounded-[3px] ${
+        isActiveTarget ? 'bg-accent-primary/[0.08] ring-1 ring-inset ring-accent-primary/25' : ''
+      }`}
+      ref={menuRef}
+    >
+      <div className="flex items-start gap-1">
+        <button
+          type="button"
+          onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+          className={`flex-1 min-w-0 flex items-start gap-1.5 px-2 py-1 rounded-[3px] text-left transition-colors ${
+            menuOpen ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
+          }`}
+          title={`${repo.path}\nClick to switch branch or create a new one`}
+        >
+          <Icon size={11} className={`mt-[2px] flex-shrink-0 ${branchColor}`} strokeWidth={1.75} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11.5px] font-mono truncate ${branchColor}`}>
+                {repo.branch || '(detached)'}
               </span>
-            )}
-            {repo.behind > 0 && (
-              <span className="flex items-center text-[10px] text-text-tertiary">
-                <ArrowDown size={9} strokeWidth={2} />{repo.behind}
-              </span>
-            )}
-            <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary flex-shrink-0 ml-auto" />
+              {repo.dirty && <CircleDot size={9} className="text-warning flex-shrink-0" strokeWidth={2} />}
+              {repo.ahead > 0 && (
+                <span className="flex items-center text-[10px] text-text-tertiary">
+                  <ArrowUp size={9} strokeWidth={2} />{repo.ahead}
+                </span>
+              )}
+              {repo.behind > 0 && (
+                <span className="flex items-center text-[10px] text-text-tertiary">
+                  <ArrowDown size={9} strokeWidth={2} />{repo.behind}
+                </span>
+              )}
+              {isActiveTarget && (
+                <span className="text-[9px] px-1 rounded bg-accent-primary/20 text-accent-primary flex-shrink-0 ml-auto">
+                  active
+                </span>
+              )}
+              <ChevronDown size={10} strokeWidth={2} className={`text-text-tertiary flex-shrink-0 ${isActiveTarget ? '' : 'ml-auto'}`} />
+            </div>
+            <div className="text-text-tertiary text-[10.5px] truncate">
+              {repo.is_main_repo ? 'root' : repo.relative_path}
+              {repo.is_worktree ? ' · worktree' : ''}
+            </div>
           </div>
-          <div className="text-text-tertiary text-[10.5px] truncate">
-            {repo.is_main_repo ? 'root' : repo.relative_path}
-            {repo.is_worktree ? ' · worktree' : ''}
-          </div>
-        </div>
-      </button>
+        </button>
+
+        <button
+          type="button"
+          onClick={togglePin}
+          className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors ${
+            isPinned
+              ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
+              : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
+          }`}
+          title={isPinned ? 'Unpin — use active terminal repo' : 'Pin as commit target'}
+        >
+          {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
+        </button>
+      </div>
 
       {menuOpen && (
         <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden">
@@ -862,6 +1049,126 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
               />
             </div>
           </div>
+
+          {createOpen && (
+            <div className="p-2 space-y-2 border-b border-[var(--ij-divider-soft)]">
+              <input
+                autoFocus
+                type="text"
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleCreateBranch(); }}
+                placeholder="new-branch-name"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-2 text-[12px] font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+              />
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10.5px] text-text-tertiary flex-shrink-0">from</span>
+                <select
+                  value={newBranchBase}
+                  onChange={(e) => setNewBranchBase(e.target.value)}
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                >
+                  {branches.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  onClick={() => { setCreateOpen(false); setNewBranchName(''); }}
+                  disabled={creating}
+                  className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateBranch}
+                  disabled={creating || !newBranchName.trim() || !newBranchBase}
+                  className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                >
+                  {creating && <Loader2 size={11} className="animate-spin" />}
+                  Create
+                </button>
+              </div>
+            </div>
+          )}
+
+          {pullOpen && (
+            <div className="p-2 space-y-2 border-b border-[var(--ij-divider-soft)]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10.5px] text-text-tertiary flex-shrink-0">from</span>
+                <select
+                  autoFocus
+                  value={pullRef}
+                  onChange={(e) => setPullRef(e.target.value)}
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                >
+                  {remoteRefs.length === 0 && <option value="">(no remote branches)</option>}
+                  {remoteRefs.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1 text-[10.5px]">
+                <span className="text-text-tertiary flex-shrink-0 mr-1">strategy</span>
+                {(['merge', 'rebase', 'ff-only'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setPullStrategy(s)}
+                    className={`h-6 px-1.5 rounded-[3px] font-mono transition-colors ${
+                      pullStrategy === s
+                        ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-inset ring-accent-primary/40'
+                        : 'text-text-secondary hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    {s === 'ff-only' ? 'ff-only' : s}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] text-text-tertiary truncate" title={`Into ${repo.branch ?? '(detached)'}`}>
+                  into <span className="font-mono text-text-secondary">{repo.branch ?? '(detached)'}</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPullOpen(false)}
+                    disabled={pulling}
+                    className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePull}
+                    disabled={pulling || !pullRef}
+                    className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                  >
+                    {pulling && <Loader2 size={11} className="animate-spin" />}
+                    Pull
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!createOpen && !pullOpen && (
+            <>
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
+              >
+                <Plus size={12} strokeWidth={2} />
+                <span>Create new branch…</span>
+              </button>
+              <button
+                onClick={openPullForm}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors border-b border-[var(--ij-divider-soft)]"
+              >
+                <GitPullRequestArrow size={12} strokeWidth={2} />
+                <span>Pull into <span className="font-mono">{repo.branch ?? '(detached)'}</span>…</span>
+              </button>
+            </>
+          )}
+
           <div className="max-h-[260px] overflow-y-auto py-1">
             {branchesLoading && (
               <div className="flex items-center gap-2 px-3 py-2 text-text-tertiary text-[12px]">
