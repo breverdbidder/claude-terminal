@@ -514,6 +514,7 @@ pub async fn clear_last_session(state: State<'_, AppState>) -> Result<(), String
 pub struct FileChange {
     pub path: String,
     pub status: String,
+    pub staged: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -583,26 +584,51 @@ pub async fn get_terminal_changes(
     }
 
     let stdout = String::from_utf8_lossy(&status_output.stdout);
-    let changes: Vec<FileChange> = stdout
-        .lines()
-        .filter(|line| line.len() >= 3)
-        .map(|line| {
-            let code = &line[..2];
-            let path = line[3..].to_string();
-            let status = match code.trim() {
-                "??" => "untracked",
-                "A" | "A " => "new",
-                "M" | "M " | " M" | "MM" => "modified",
-                "D" | "D " | " D" => "deleted",
-                r if r.starts_with('R') => "renamed",
-                _ => "modified",
-            };
-            FileChange {
-                path,
-                status: status.to_string(),
+    let mut changes: Vec<FileChange> = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 3 { continue; }
+        let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
+        let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
+        // Rename line: "R  old -> new"
+        let raw_path = &line[3..];
+        let path = if raw_path.contains(" -> ") {
+            raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
+        } else {
+            raw_path.to_string()
+        };
+
+        if x == '?' && y == '?' {
+            // Untracked — always unstaged
+            changes.push(FileChange { path, status: "untracked".into(), staged: false });
+            continue;
+        }
+
+        let map_code = |c: char| match c {
+            'A' => "new",
+            'M' => "modified",
+            'D' => "deleted",
+            'R' => "renamed",
+            'C' => "new",
+            'U' => "modified", // conflicted — treat as modified
+            'T' => "modified", // type change
+            _ => "",
+        };
+
+        // Staged side (X)
+        if x != ' ' && x != '?' {
+            let status = map_code(x);
+            if !status.is_empty() {
+                changes.push(FileChange { path: path.clone(), status: status.into(), staged: true });
             }
-        })
-        .collect();
+        }
+        // Unstaged side (Y)
+        if y != ' ' && y != '?' {
+            let status = map_code(y);
+            if !status.is_empty() {
+                changes.push(FileChange { path, status: status.into(), staged: false });
+            }
+        }
+    }
 
     Ok(FileChangesResult {
         terminal_id: id,
@@ -973,6 +999,265 @@ pub async fn get_repo_branches(
         .collect();
 
     Ok(branches)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StashEntry {
+    pub reference: String, // e.g. "stash@{0}"
+    pub message: String,
+    pub branch: Option<String>,
+}
+
+fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
+    let out = shell_command("git", args)
+        .current_dir(path)
+        .output()
+        .map_err(|e| format!("Failed to run git {}: {}", args.join(" "), e))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        return Err(if !stderr.is_empty() { stderr } else { stdout });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+fn validate_stash_ref(r: &str) -> Result<(), String> {
+    // Must be "stash@{N}" to prevent argument injection
+    if !r.starts_with("stash@{") || !r.ends_with('}') {
+        return Err("Invalid stash reference".to_string());
+    }
+    let inner = &r[7..r.len() - 1];
+    if inner.is_empty() || !inner.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Invalid stash reference".to_string());
+    }
+    Ok(())
+}
+
+fn validate_file_list(files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Err("No files selected".to_string());
+    }
+    for f in files {
+        if f.is_empty() || f.contains('\0') {
+            return Err("Invalid file path".to_string());
+        }
+        // Reject absolute paths and parent-dir traversal. Git always reports
+        // repo-relative paths, so legitimate inputs never need these.
+        if f.starts_with('/') || f.starts_with('\\') || f.contains("..") {
+            return Err(format!("Invalid file path: {}", f));
+        }
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn git_stage_files(
+    state: State<'_, AppState>,
+    path: String,
+    files: Vec<String>,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    validate_file_list(&files)?;
+    // `git add -- <file>...` with `--` to terminate options
+    let mut args: Vec<&str> = vec!["add", "--"];
+    for f in &files { args.push(f); }
+    run_git(&path, &args).map(|_| ())
+}
+
+#[command]
+pub async fn git_unstage_files(
+    state: State<'_, AppState>,
+    path: String,
+    files: Vec<String>,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    validate_file_list(&files)?;
+    // Use `git reset HEAD -- <file>` for broad git-version compatibility.
+    // `git restore --staged` (2.23+) is the modern equivalent.
+    let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
+    for f in &files { args.push(f); }
+    // `git reset` returns non-zero on no-op or initial-commit edge cases, but
+    // the files do end up unstaged — we tolerate non-fatal stderr.
+    match run_git(&path, &args) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // On a repo with no HEAD yet, use `git rm --cached` as fallback.
+            if e.contains("ambiguous argument 'HEAD'") || e.contains("unknown revision") {
+                let mut fb: Vec<&str> = vec!["rm", "--cached", "--"];
+                for f in &files { fb.push(f); }
+                run_git(&path, &fb).map(|_| ())
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+#[command]
+pub async fn git_commit(
+    state: State<'_, AppState>,
+    path: String,
+    message: String,
+    auto_stage: AutoStageMode,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    if message.trim().is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+    // If the caller asks us to auto-stage, do so. Otherwise commit what's
+    // already staged — and if nothing is staged, return a clear error.
+    match auto_stage {
+        AutoStageMode::None => {
+            let status = run_git(&path, &["diff", "--cached", "--name-only"])?;
+            if status.trim().is_empty() {
+                return Err("Nothing is staged — stage files first or choose 'stage all'".to_string());
+            }
+        }
+        AutoStageMode::Tracked => { run_git(&path, &["add", "-u"])?; }
+        AutoStageMode::All => { run_git(&path, &["add", "-A"])?; }
+    }
+
+    // Pass message via a temp file to avoid any shell-quoting concerns for
+    // multi-line or special-character messages.
+    let tmp = std::env::temp_dir().join(format!(
+        "ct-commit-msg-{}.txt",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    std::fs::write(&tmp, message.as_bytes()).map_err(|e| format!("Failed to write commit message: {}", e))?;
+    let tmp_str = tmp.to_string_lossy().to_string();
+    let res = run_git(&path, &["commit", "-F", &tmp_str]);
+    let _ = std::fs::remove_file(&tmp);
+    res.map(|_| ())
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoStageMode {
+    None,
+    Tracked,
+    All,
+}
+
+#[command]
+pub async fn git_push(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    run_git(&path, &["push"]).map(|_| ())
+}
+
+#[command]
+pub async fn git_stash_push(
+    state: State<'_, AppState>,
+    path: String,
+    message: Option<String>,
+    include_untracked: bool,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    let mut args: Vec<String> = vec!["stash".into(), "push".into()];
+    if include_untracked { args.push("-u".into()); }
+    if let Some(m) = message.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        // Use a temp file via `-F`? `git stash push` doesn't support -F; use -m.
+        // Reject control chars to keep cmd.exe happy on Windows.
+        if m.chars().any(|c| c.is_control()) {
+            return Err("Stash message cannot contain control characters".to_string());
+        }
+        args.push("-m".into());
+        args.push(m.to_string());
+    }
+    let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_git(&path, &str_args).map(|_| ())
+}
+
+#[command]
+pub async fn git_list_stashes(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<StashEntry>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+    // Format: "<ref>\x1f<subject>" — \x1f (unit separator) is safe against
+    // colons/spaces in the subject.
+    let out = run_git(&path, &["stash", "list", "--format=%gd\x1f%s"])?;
+    let mut entries = Vec::new();
+    for line in out.lines() {
+        let mut parts = line.splitn(2, '\x1f');
+        let reference = parts.next().unwrap_or("").trim().to_string();
+        let subject = parts.next().unwrap_or("").trim().to_string();
+        if reference.is_empty() { continue; }
+        // Branch name is often encoded as "WIP on <branch>: ..." or "On <branch>: ..."
+        let branch = subject
+            .strip_prefix("WIP on ")
+            .or_else(|| subject.strip_prefix("On "))
+            .and_then(|s| s.split_once(':'))
+            .map(|(b, _)| b.trim().to_string());
+        entries.push(StashEntry { reference, message: subject, branch });
+    }
+    Ok(entries)
+}
+
+#[command]
+pub async fn git_stash_apply(
+    state: State<'_, AppState>,
+    path: String,
+    reference: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    validate_stash_ref(&reference)?;
+    run_git(&path, &["stash", "apply", &reference]).map(|_| ())
+}
+
+#[command]
+pub async fn git_stash_pop(
+    state: State<'_, AppState>,
+    path: String,
+    reference: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    validate_stash_ref(&reference)?;
+    run_git(&path, &["stash", "pop", &reference]).map(|_| ())
+}
+
+#[command]
+pub async fn git_stash_drop(
+    state: State<'_, AppState>,
+    path: String,
+    reference: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    validate_stash_ref(&reference)?;
+    run_git(&path, &["stash", "drop", &reference]).map(|_| ())
+}
+
+#[command]
+pub async fn checkout_branch(
+    state: State<'_, AppState>,
+    path: String,
+    branch: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    // Defense against arg injection — branch names cannot start with '-' and
+    // cannot contain characters git disallows for refs anyway, but we're extra
+    // strict with a conservative allowlist.
+    if branch.is_empty() || branch.starts_with('-') {
+        return Err("Invalid branch name".to_string());
+    }
+    if branch.chars().any(|c| c.is_control() || c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[') {
+        return Err("Invalid branch name".to_string());
+    }
+    let output = shell_command("git", &["checkout", &branch])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(if !stderr.is_empty() { stderr } else { stdout });
+    }
+    Ok(())
 }
 
 #[command]
@@ -1845,4 +2130,150 @@ pub async fn get_active_teams() -> Result<Vec<TeamInfo>, String> {
     }
 
     Ok(teams)
+}
+
+// ─── Git repo scan (sidebar Git panel) ────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScannedGitRepo {
+    pub path: String,
+    pub relative_path: String,
+    pub branch: Option<String>,
+    pub is_worktree: bool,
+    pub is_main_repo: bool,
+    pub dirty: bool,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+fn git_branch_for(path: &std::path::Path) -> Option<String> {
+    let out = shell_command("git", &["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(path)
+        .output()
+        .ok()?;
+    if !out.status.success() { return None; }
+    let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if b == "HEAD" || b.is_empty() { None } else { Some(b) }
+}
+
+fn git_is_worktree(path: &std::path::Path) -> bool {
+    let git_dir = shell_command("git", &["rev-parse", "--git-dir"])
+        .current_dir(path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let common = shell_command("git", &["rev-parse", "--git-common-dir"])
+        .current_dir(path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    match (git_dir, common) {
+        (Some(d), Some(c)) => {
+            let dc = std::path::PathBuf::from(&d).canonicalize().ok();
+            let cc = std::path::PathBuf::from(&c).canonicalize().ok();
+            match (dc, cc) { (Some(a), Some(b)) => a != b, _ => d != c }
+        }
+        _ => false,
+    }
+}
+
+fn git_dirty(path: &std::path::Path) -> bool {
+    shell_command("git", &["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false)
+}
+
+fn git_ahead_behind(path: &std::path::Path) -> (u32, u32) {
+    // rev-list --count --left-right HEAD...@{u}   → "ahead\tbehind"
+    let out = shell_command("git", &["rev-list", "--count", "--left-right", "HEAD...@{u}"])
+        .current_dir(path)
+        .output();
+    let Ok(out) = out else { return (0, 0); };
+    if !out.status.success() { return (0, 0); }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let mut parts = s.split_whitespace();
+    let a: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    let b: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    (a, b)
+}
+
+const SCAN_SKIP_DIRS: &[&str] = &[
+    "node_modules", "target", ".git", "dist", "build", "out",
+    ".next", ".nuxt", ".turbo", ".cache", ".venv", "venv", "__pycache__",
+    ".idea", ".vscode", "vendor",
+];
+
+fn scan_for_repos(
+    root: &std::path::Path,
+    current: &std::path::Path,
+    depth: u32,
+    max_depth: u32,
+    results: &mut Vec<ScannedGitRepo>,
+    limit: usize,
+) {
+    if results.len() >= limit { return; }
+    if depth > max_depth { return; }
+
+    // Is `current` itself a git repo?
+    let dot_git = current.join(".git");
+    if dot_git.exists() {
+        let branch = git_branch_for(current);
+        let is_wt = git_is_worktree(current);
+        let dirty = git_dirty(current);
+        let (ahead, behind) = git_ahead_behind(current);
+        let rel = current.strip_prefix(root).unwrap_or(current).to_string_lossy().to_string();
+        let relative_path = if rel.is_empty() { ".".to_string() } else { rel };
+        let is_main = current == root;
+        results.push(ScannedGitRepo {
+            path: current.to_string_lossy().to_string(),
+            relative_path,
+            branch,
+            is_worktree: is_wt,
+            is_main_repo: is_main,
+            dirty,
+            ahead,
+            behind,
+        });
+        // Don't descend into a repo's own directory when looking for *nested*
+        // repos — a nested repo is one whose parent is not itself a repo root.
+        // Allow descent only for the root itself so we can find sub-repos
+        // embedded as submodules or siblings.
+        if !is_main { return; }
+    }
+
+    let Ok(entries) = std::fs::read_dir(current) else { return; };
+    for entry in entries.flatten() {
+        if results.len() >= limit { return; }
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        if name.starts_with('.') && name != ".git" { continue; }
+        if SCAN_SKIP_DIRS.iter().any(|s| *s == name) { continue; }
+        scan_for_repos(root, &path, depth + 1, max_depth, results, limit);
+    }
+}
+
+#[command]
+pub async fn scan_git_repos(
+    state: State<'_, AppState>,
+    root_path: String,
+) -> Result<Vec<ScannedGitRepo>, String> {
+    validate_path_is_trusted(&state, &root_path).await?;
+    let root = std::path::Path::new(&root_path)
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    let mut results = Vec::new();
+    // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
+    // limit 40 guards against runaway scans
+    scan_for_repos(&root, &root, 0, 4, &mut results, 40);
+    Ok(results)
 }

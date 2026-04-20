@@ -65,6 +65,16 @@ fn main() {
             commands::get_worktree_info,
             commands::list_worktrees,
             commands::get_repo_branches,
+            commands::checkout_branch,
+            commands::git_commit,
+            commands::git_push,
+            commands::git_stage_files,
+            commands::git_unstage_files,
+            commands::git_stash_push,
+            commands::git_list_stashes,
+            commands::git_stash_apply,
+            commands::git_stash_pop,
+            commands::git_stash_drop,
             commands::create_worktree,
             commands::remove_worktree,
             commands::get_session_history,
@@ -95,6 +105,7 @@ fn main() {
             commands::read_memory_file,
             commands::write_memory_file,
             commands::list_claude_md_files,
+            commands::scan_git_repos,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

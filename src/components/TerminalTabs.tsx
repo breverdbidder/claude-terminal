@@ -14,7 +14,7 @@ import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode } = useAppStore();
   const terminalList = useMemo(() => Array.from(terminals.values()).map(t => t.config), [terminals]);
 
@@ -174,7 +174,7 @@ export function TerminalTabs() {
             ref={tabsContainerRef}
             axis="x"
             values={terminalList}
-            onReorder={() => {}}
+            onReorder={(next) => reorderTerminals(next.map((t) => t.id))}
             className="flex items-center overflow-x-auto scrollbar-none"
           >
             {terminalList.map((terminal) => {

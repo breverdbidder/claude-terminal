@@ -17,7 +17,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled } = useAppStore();
+  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, showGitPanel, setShowGitPanel } = useAppStore();
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -321,6 +321,33 @@ export function SettingsModal() {
                   <span
                     className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
                       notifyOnFinish ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* File Changes Panel */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">File Changes Panel</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-text-primary text-[13px]">Show Repositories section</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    List the root repo, worktree, and nested sub-repositories for the active terminal's folder
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowGitPanel(!showGitPanel)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                    showGitPanel ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      showGitPanel ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
