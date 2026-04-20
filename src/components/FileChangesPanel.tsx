@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -348,6 +348,7 @@ export function FileChangesPanel() {
               {repos.filter((r) => r.is_main_repo).map((r) => (
                 <RepoRow key={r.path} repo={r} />
               ))}
+
 
               {linkedWorktrees.length > 0 && (
                 <div className="text-text-tertiary text-[10px] uppercase tracking-wide px-2 pt-1.5">
@@ -738,34 +739,167 @@ function WorktreeRow({ wt, isActive }: { wt: WorktreeInfo; isActive: boolean }) 
 function RepoRow({ repo }: { repo: ScannedGitRepo }) {
   const Icon = repo.is_worktree ? GitFork : GitBranch;
   const branchColor = repo.is_worktree ? 'text-purple-400' : 'text-accent-primary';
+  const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
+  const activeCwd = useTerminalStore((s) => {
+    const id = s.activeTerminalId;
+    return id ? s.terminals.get(id)?.config.working_directory ?? null : null;
+  });
+  const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
+  const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const openMenu = useCallback(async () => {
+    setMenuOpen(true);
+    setFilter('');
+    setBranchesLoading(true);
+    try {
+      const list = await invoke<string[]>('get_repo_branches', { path: repo.path });
+      setBranches(list);
+    } catch (err) {
+      toast.error('Branches', typeof err === 'string' ? err : 'Failed to list branches');
+      setMenuOpen(false);
+    } finally {
+      setBranchesLoading(false);
+    }
+  }, [repo.path]);
+
+  const handleCheckout = useCallback(async (branch: string) => {
+    if (branch === repo.branch) { setMenuOpen(false); return; }
+    setCheckoutTarget(branch);
+    try {
+      await invoke('checkout_branch', { path: repo.path, branch });
+      toast.success('Checkout', `Switched to ${branch} in ${repo.is_main_repo ? 'root' : repo.relative_path}`);
+      setMenuOpen(false);
+      if (activeTerminalId && activeCwd && pathsEqual(activeCwd, repo.path)) {
+        await fetchGitInfo(activeTerminalId);
+      }
+      triggerChangesRefreshAction();
+    } catch (err) {
+      toast.error('Checkout failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setCheckoutTarget(null);
+    }
+  }, [repo.path, repo.branch, repo.is_main_repo, repo.relative_path, activeTerminalId, activeCwd, fetchGitInfo, triggerChangesRefreshAction]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const filteredBranches = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return branches;
+    return branches.filter((b) => b.toLowerCase().includes(q));
+  }, [branches, filter]);
+
   return (
-    <div
-      className="flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-white/[0.04]"
-      title={repo.path}
-    >
-      <Icon size={11} className={`mt-[2px] flex-shrink-0 ${branchColor}`} strokeWidth={1.75} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[11.5px] font-mono truncate ${branchColor}`}>
-            {repo.branch || '(detached)'}
-          </span>
-          {repo.dirty && <CircleDot size={9} className="text-warning flex-shrink-0" strokeWidth={2} />}
-          {repo.ahead > 0 && (
-            <span className="flex items-center text-[10px] text-text-tertiary">
-              <ArrowUp size={9} strokeWidth={2} />{repo.ahead}
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
+        className={`w-full flex items-start gap-1.5 px-2 py-1 rounded-[3px] text-left transition-colors ${
+          menuOpen ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
+        }`}
+        title={`${repo.path}\nClick to switch branch`}
+      >
+        <Icon size={11} className={`mt-[2px] flex-shrink-0 ${branchColor}`} strokeWidth={1.75} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[11.5px] font-mono truncate ${branchColor}`}>
+              {repo.branch || '(detached)'}
             </span>
-          )}
-          {repo.behind > 0 && (
-            <span className="flex items-center text-[10px] text-text-tertiary">
-              <ArrowDown size={9} strokeWidth={2} />{repo.behind}
-            </span>
-          )}
+            {repo.dirty && <CircleDot size={9} className="text-warning flex-shrink-0" strokeWidth={2} />}
+            {repo.ahead > 0 && (
+              <span className="flex items-center text-[10px] text-text-tertiary">
+                <ArrowUp size={9} strokeWidth={2} />{repo.ahead}
+              </span>
+            )}
+            {repo.behind > 0 && (
+              <span className="flex items-center text-[10px] text-text-tertiary">
+                <ArrowDown size={9} strokeWidth={2} />{repo.behind}
+              </span>
+            )}
+            <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary flex-shrink-0 ml-auto" />
+          </div>
+          <div className="text-text-tertiary text-[10.5px] truncate">
+            {repo.is_main_repo ? 'root' : repo.relative_path}
+            {repo.is_worktree ? ' · worktree' : ''}
+          </div>
         </div>
-        <div className="text-text-tertiary text-[10.5px] truncate">
-          {repo.is_main_repo ? 'root' : repo.relative_path}
-          {repo.is_worktree ? ' · worktree' : ''}
+      </button>
+
+      {menuOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden">
+          <div className="p-2 border-b border-[var(--ij-divider-soft)]">
+            <div className="relative">
+              <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
+              <input
+                autoFocus
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter branches…"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+              />
+            </div>
+          </div>
+          <div className="max-h-[260px] overflow-y-auto py-1">
+            {branchesLoading && (
+              <div className="flex items-center gap-2 px-3 py-2 text-text-tertiary text-[12px]">
+                <Loader2 size={12} className="animate-spin" />
+                Loading branches…
+              </div>
+            )}
+            {!branchesLoading && filteredBranches.length === 0 && (
+              <div className="px-3 py-2 text-text-tertiary text-[12px]">
+                {branches.length === 0 ? 'No branches' : 'No match'}
+              </div>
+            )}
+            {!branchesLoading && filteredBranches.map((b) => {
+              const isCurrent = b === repo.branch;
+              const isChecking = checkoutTarget === b;
+              return (
+                <button
+                  key={b}
+                  onClick={() => handleCheckout(b)}
+                  disabled={isChecking || isCurrent}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-mono text-left transition-colors ${
+                    isCurrent
+                      ? 'text-accent-primary bg-accent-primary/10 cursor-default'
+                      : 'text-text-primary hover:bg-white/[0.05]'
+                  }`}
+                >
+                  <span className="truncate">{b}</span>
+                  {isChecking ? (
+                    <Loader2 size={11} className="animate-spin text-text-tertiary flex-shrink-0" />
+                  ) : isCurrent ? (
+                    <Check size={12} className="text-accent-primary flex-shrink-0" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
