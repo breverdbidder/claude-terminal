@@ -14,11 +14,12 @@ interface FileDiffResult {
 interface InlineDiffViewProps {
   filePath: string;
   terminalId: string;
+  pathOverride?: string | null;
 }
 
 const MAX_DIFF_SIZE = 100_000; // 100KB guard
 
-export function InlineDiffView({ filePath, terminalId }: InlineDiffViewProps) {
+export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDiffViewProps) {
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +32,17 @@ export function InlineDiffView({ filePath, terminalId }: InlineDiffViewProps) {
     setError(null);
     setTruncated(false);
     try {
-      const result = await invoke<FileDiffResult>('get_file_diff', {
-        id: terminalId,
-        filePath,
-        staged: showStaged,
-      });
+      const result = pathOverride
+        ? await invoke<FileDiffResult>('get_path_file_diff', {
+            path: pathOverride,
+            filePath,
+            staged: showStaged,
+          })
+        : await invoke<FileDiffResult>('get_file_diff', {
+            id: terminalId,
+            filePath,
+            staged: showStaged,
+          });
 
       if (result.is_binary) {
         setIsBinary(true);
@@ -58,7 +65,7 @@ export function InlineDiffView({ filePath, terminalId }: InlineDiffViewProps) {
 
   useEffect(() => {
     fetchDiff(staged);
-  }, [filePath, terminalId, staged]);
+  }, [filePath, terminalId, pathOverride, staged]);
 
   if (loading) {
     return (

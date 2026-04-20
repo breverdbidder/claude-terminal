@@ -2277,3 +2277,345 @@ pub async fn scan_git_repos(
     scan_for_repos(&root, &root, 0, 4, &mut results, 40);
     Ok(results)
 }
+
+// ─── Path-based variants for operating on nested / selected repos ───────────
+
+#[command]
+pub async fn get_path_changes(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<FileChangesResult, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let branch_output = shell_command("git", &["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&path)
+        .output();
+
+    let (is_git_repo, branch) = match branch_output {
+        Ok(output) if output.status.success() => {
+            let b = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (true, Some(b))
+        }
+        _ => (false, None),
+    };
+
+    if !is_git_repo {
+        return Ok(FileChangesResult {
+            terminal_id: String::new(),
+            working_directory: path,
+            changes: vec![],
+            is_git_repo: false,
+            branch: None,
+            error: None,
+        });
+    }
+
+    let status_output = shell_command("git", &["status", "--porcelain"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+    if !status_output.status.success() {
+        return Ok(FileChangesResult {
+            terminal_id: String::new(),
+            working_directory: path,
+            changes: vec![],
+            is_git_repo: true,
+            branch,
+            error: Some(String::from_utf8_lossy(&status_output.stderr).trim().to_string()),
+        });
+    }
+
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+    let mut changes: Vec<FileChange> = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 3 { continue; }
+        let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
+        let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
+        let raw_path = &line[3..];
+        let fpath = if raw_path.contains(" -> ") {
+            raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
+        } else {
+            raw_path.to_string()
+        };
+
+        if x == '?' && y == '?' {
+            changes.push(FileChange { path: fpath, status: "untracked".into(), staged: false });
+            continue;
+        }
+
+        let map_code = |c: char| match c {
+            'A' => "new",
+            'M' => "modified",
+            'D' => "deleted",
+            'R' => "renamed",
+            'C' => "new",
+            'U' => "modified",
+            'T' => "modified",
+            _ => "",
+        };
+
+        if x != ' ' && x != '?' {
+            let status = map_code(x);
+            if !status.is_empty() {
+                changes.push(FileChange { path: fpath.clone(), status: status.into(), staged: true });
+            }
+        }
+        if y != ' ' && y != '?' {
+            let status = map_code(y);
+            if !status.is_empty() {
+                changes.push(FileChange { path: fpath, status: status.into(), staged: false });
+            }
+        }
+    }
+
+    Ok(FileChangesResult {
+        terminal_id: String::new(),
+        working_directory: path,
+        changes,
+        is_git_repo: true,
+        branch,
+        error: None,
+    })
+}
+
+#[command]
+pub async fn get_path_file_diff(
+    state: State<'_, AppState>,
+    path: String,
+    file_path: String,
+    staged: bool,
+) -> Result<FileDiffResult, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+    let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+    let file_status = if status_str.len() >= 2 {
+        status_str[..2].trim().to_string()
+    } else {
+        String::new()
+    };
+
+    let is_new_file = file_status == "??" || file_status == "A";
+    let is_deleted_file = file_status == "D";
+
+    let diff_text = if is_new_file {
+        let full_path = std::path::Path::new(&path).join(&file_path);
+        match std::fs::read_to_string(&full_path) {
+            Ok(content) => {
+                let lines: Vec<String> = content.lines().map(|line| format!("+{}", line)).collect();
+                format!(
+                    "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
+                    file_path,
+                    lines.len(),
+                    lines.join("\n")
+                )
+            }
+            Err(_) => String::from("Unable to read file contents"),
+        }
+    } else if is_deleted_file {
+        let show_output = shell_command("git", &["show", &format!("HEAD:{}", file_path)])
+            .current_dir(&path)
+            .output();
+        match show_output {
+            Ok(output) if output.status.success() => {
+                let content = String::from_utf8_lossy(&output.stdout);
+                let lines: Vec<String> = content.lines().map(|line| format!("-{}", line)).collect();
+                format!(
+                    "--- a/{}\n+++ /dev/null\n@@ -1,{} +0,0 @@\n{}",
+                    file_path,
+                    lines.len(),
+                    lines.join("\n")
+                )
+            }
+            _ => String::from("Unable to read deleted file contents"),
+        }
+    } else {
+        let mut args = vec!["diff"];
+        if staged { args.push("--cached"); }
+        args.push("--");
+        args.push(&file_path);
+
+        let diff_output = shell_command("git", &args)
+            .current_dir(&path)
+            .output()
+            .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+        let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
+        if text.trim().is_empty() && !staged {
+            let staged_output = shell_command("git", &["diff", "--cached", "--", &file_path])
+                .current_dir(&path)
+                .output()
+                .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+            String::from_utf8_lossy(&staged_output.stdout).to_string()
+        } else {
+            text
+        }
+    };
+
+    let is_binary = diff_text.contains("Binary files") && diff_text.contains("differ");
+
+    Ok(FileDiffResult {
+        file_path,
+        diff_text,
+        is_new_file,
+        is_deleted_file,
+        is_binary,
+    })
+}
+
+#[command]
+pub async fn git_create_branch(
+    state: State<'_, AppState>,
+    path: String,
+    name: String,
+    base: Option<String>,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let reject_bad_ref = |s: &str, label: &str| -> Result<(), String> {
+        if s.is_empty() || s.starts_with('-') {
+            return Err(format!("Invalid {}", label));
+        }
+        if s.chars().any(|c| c.is_control() || c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\') {
+            return Err(format!("Invalid {}", label));
+        }
+        Ok(())
+    };
+    reject_bad_ref(&name, "branch name")?;
+    if let Some(b) = base.as_deref() {
+        reject_bad_ref(b, "base ref")?;
+    }
+
+    let mut args: Vec<&str> = vec!["checkout", "-b", &name];
+    if let Some(b) = base.as_deref() {
+        args.push(b);
+    }
+
+    let output = shell_command("git", &args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git checkout -b: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(if !stderr.is_empty() { stderr } else { stdout });
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn get_repo_remote_refs(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<String>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+    let out = run_git(&path, &[
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "refs/remotes/",
+    ])?;
+    let mut refs: Vec<String> = out
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty() && !l.ends_with("/HEAD"))
+        .collect();
+    refs.sort();
+    Ok(refs)
+}
+
+#[command]
+pub async fn get_upstream_branch(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Option<String>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+    let output = shell_command("git", &[
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{upstream}",
+    ])
+    .current_dir(&path)
+    .output()
+    .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
+    if !output.status.success() {
+        // No upstream configured — not an error, just absent
+        return Ok(None);
+    }
+    let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if s.is_empty() { Ok(None) } else { Ok(Some(s)) }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum PullStrategy {
+    Merge,
+    Rebase,
+    FfOnly,
+}
+
+#[command]
+pub async fn git_pull_branch(
+    state: State<'_, AppState>,
+    path: String,
+    remote: String,
+    branch: String,
+    strategy: PullStrategy,
+) -> Result<String, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let reject_bad_ref = |s: &str, label: &str| -> Result<(), String> {
+        if s.is_empty() || s.starts_with('-') {
+            return Err(format!("Invalid {}", label));
+        }
+        if s.chars().any(|c| c.is_control() || c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\') {
+            return Err(format!("Invalid {}", label));
+        }
+        Ok(())
+    };
+    reject_bad_ref(&remote, "remote")?;
+    reject_bad_ref(&branch, "branch")?;
+
+    // Refuse to pull when the working tree is dirty — merges on top of uncommitted
+    // changes leave the user in a messy state. Better to fail fast with advice.
+    let dirty = run_git(&path, &["status", "--porcelain"])?;
+    if !dirty.trim().is_empty() {
+        return Err(
+            "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
+        );
+    }
+
+    let mut args: Vec<&str> = vec!["pull"];
+    match strategy {
+        PullStrategy::Merge => {}
+        PullStrategy::Rebase => args.push("--rebase"),
+        PullStrategy::FfOnly => args.push("--ff-only"),
+    }
+    args.push("--");
+    args.push(&remote);
+    args.push(&branch);
+
+    let output = shell_command("git", &args)
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git pull: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        return Err(if !stderr.is_empty() { stderr } else { stdout });
+    }
+    // Surface the combined output so the UI can show "Already up to date." or merge summary.
+    let combined = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("{}\n{}", stdout, stderr)
+    };
+    Ok(combined)
+}
