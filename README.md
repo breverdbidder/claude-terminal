@@ -34,8 +34,28 @@
 ## Screenshots
 
 <p align="center">
-  <img src="docs/demo.gif" alt="ClaudeTerminal Demo" width="800">
-  <br><em>Welcome screen, new terminal dialog, main view, grid view, settings, and profiles</em>
+  <img src="docs/welcome.png" alt="Welcome screen" width="800">
+  <br><em>Welcome screen — empty state with quick-launch shortcuts and sidebar navigation</em>
+</p>
+
+<p align="center">
+  <img src="docs/main-view.png" alt="Main view with active Claude Code session" width="800">
+  <br><em>Main view — an active Claude Code session with branch indicator and status bar</em>
+</p>
+
+<p align="center">
+  <img src="docs/new-terminal.png" alt="New Terminal dialog" width="800">
+  <br><em>New Terminal dialog — pick a profile, set a nickname, working directory, and Claude arguments</em>
+</p>
+
+<p align="center">
+  <img src="docs/grid-view.png" alt="Grid view with four terminals" width="800">
+  <br><em>Grid view — up to 8 Claude Code sessions at once with selectable layouts</em>
+</p>
+
+<p align="center">
+  <img src="docs/settings.png" alt="Settings modal" width="800">
+  <br><em>Settings — app and Claude Code update status, default arguments, and notifications</em>
 </p>
 
 ## Features
