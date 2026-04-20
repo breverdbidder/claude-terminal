@@ -62,6 +62,7 @@ interface TerminalState {
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
   fetchGitInfo: (terminalId: string) => Promise<void>;
+  reorderTerminals: (orderedIds: string[]) => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -290,4 +291,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       // Silently ignore — non-git dirs or git not installed
     }
   },
+
+  reorderTerminals: (orderedIds) => set((state) => {
+    // Rebuild the Map in the new order. JS Maps preserve insertion order,
+    // so consumers that iterate via `Array.from(terminals.values())` pick up
+    // the reorder automatically. Unknown ids are dropped and missing ids are
+    // appended at the end to stay resilient to races with concurrent adds.
+    const next = new Map<string, TerminalInstance>();
+    for (const id of orderedIds) {
+      const inst = state.terminals.get(id);
+      if (inst) next.set(id, inst);
+    }
+    for (const [id, inst] of state.terminals) {
+      if (!next.has(id)) next.set(id, inst);
+    }
+    return { terminals: next };
+  }),
 }));

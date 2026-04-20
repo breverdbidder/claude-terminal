@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
   Lightbulb,
@@ -10,11 +10,16 @@ import {
   X,
   GitBranch,
   ChevronDown,
+  Check,
+  Loader2,
+  Search as SearchIcon,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -41,10 +46,18 @@ export function TitleBar() {
     hintsOpen,
     changesOpen,
     orchestrationOpen,
+    triggerChangesRefresh,
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
+  const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
   const appWindow = getCurrentWindow();
   const [appVersion, setAppVersion] = useState('');
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState('');
+  const branchMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getVersion().then(setAppVersion);
@@ -56,6 +69,69 @@ export function TitleBar() {
     () => pickBreadcrumb(active?.config.working_directory),
     [active?.config.working_directory]
   );
+
+  const openBranchMenu = useCallback(async () => {
+    if (!active?.config.working_directory) return;
+    setBranchMenuOpen(true);
+    setBranchFilter('');
+    setBranchesLoading(true);
+    try {
+      const list = await invoke<string[]>('get_repo_branches', {
+        path: active.config.working_directory,
+      });
+      setBranches(list);
+    } catch (err) {
+      toast.error('Branches', typeof err === 'string' ? err : 'Failed to list branches');
+      setBranchMenuOpen(false);
+    } finally {
+      setBranchesLoading(false);
+    }
+  }, [active?.config.working_directory]);
+
+  const handleCheckout = useCallback(async (branch: string) => {
+    if (!active?.config.working_directory || !activeTerminalId) return;
+    if (branch === gitInfo?.current_branch) { setBranchMenuOpen(false); return; }
+    setCheckoutTarget(branch);
+    try {
+      await invoke('checkout_branch', {
+        path: active.config.working_directory,
+        branch,
+      });
+      toast.success('Checkout', `Switched to ${branch}`);
+      setBranchMenuOpen(false);
+      await fetchGitInfo(activeTerminalId);
+      triggerChangesRefresh();
+    } catch (err) {
+      toast.error('Checkout failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setCheckoutTarget(null);
+    }
+  }, [active?.config.working_directory, activeTerminalId, gitInfo?.current_branch, fetchGitInfo, triggerChangesRefresh]);
+
+  // Close on outside click + Escape
+  useEffect(() => {
+    if (!branchMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (branchMenuRef.current && !branchMenuRef.current.contains(e.target as Node)) {
+        setBranchMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setBranchMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [branchMenuOpen]);
+
+  const filteredBranches = useMemo(() => {
+    const q = branchFilter.trim().toLowerCase();
+    if (!q) return branches;
+    return branches.filter((b) => b.toLowerCase().includes(q));
+  }, [branches, branchFilter]);
   const statusDot = !active
     ? 'bg-text-tertiary'
     : active.config.status === 'Running'
@@ -133,20 +209,79 @@ export function TitleBar() {
           />
         </button>
 
-        {/* Branch widget */}
+        {/* Branch switcher */}
         {gitInfo?.is_git_repo && gitInfo.current_branch && (
           <>
             <span className="w-px h-4 bg-[var(--ij-divider-soft)] mx-0.5" />
-            <button
-              className="no-drag flex items-center gap-1.5 h-7 px-2 rounded-[6px] hover:bg-white/[0.06] transition-colors"
-              title={`Branch: ${gitInfo.current_branch}`}
-            >
-              <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
-              <span className="text-text-primary text-[12px] font-mono truncate max-w-[140px]">
-                {gitInfo.current_branch}
-              </span>
-              <ChevronDown size={11} strokeWidth={2} className="text-text-tertiary" />
-            </button>
+            <div className="relative no-drag" ref={branchMenuRef}>
+              <button
+                onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
+                className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
+                  branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+                }`}
+                title={`Branch: ${gitInfo.current_branch} — click to switch`}
+              >
+                <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
+                <span className="text-text-primary text-[12px] font-mono truncate max-w-[140px]">
+                  {gitInfo.current_branch}
+                </span>
+                <ChevronDown size={11} strokeWidth={2} className="text-text-tertiary" />
+              </button>
+
+              {branchMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden">
+                  <div className="p-2 border-b border-[var(--ij-divider-soft)]">
+                    <div className="relative">
+                      <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={branchFilter}
+                        onChange={(e) => setBranchFilter(e.target.value)}
+                        placeholder="Filter branches…"
+                        className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto py-1">
+                    {branchesLoading && (
+                      <div className="flex items-center gap-2 px-3 py-2 text-text-tertiary text-[12px]">
+                        <Loader2 size={12} className="animate-spin" />
+                        Loading branches…
+                      </div>
+                    )}
+                    {!branchesLoading && filteredBranches.length === 0 && (
+                      <div className="px-3 py-2 text-text-tertiary text-[12px]">
+                        {branches.length === 0 ? 'No branches' : 'No match'}
+                      </div>
+                    )}
+                    {!branchesLoading && filteredBranches.map((b) => {
+                      const isCurrent = b === gitInfo.current_branch;
+                      const isChecking = checkoutTarget === b;
+                      return (
+                        <button
+                          key={b}
+                          onClick={() => handleCheckout(b)}
+                          disabled={isChecking || isCurrent}
+                          className={`w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-mono text-left transition-colors ${
+                            isCurrent
+                              ? 'text-accent-primary bg-accent-primary/10 cursor-default'
+                              : 'text-text-primary hover:bg-white/[0.05]'
+                          }`}
+                        >
+                          <span className="truncate">{b}</span>
+                          {isChecking ? (
+                            <Loader2 size={11} className="animate-spin text-text-tertiary flex-shrink-0" />
+                          ) : isCurrent ? (
+                            <Check size={12} className="text-accent-primary flex-shrink-0" />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

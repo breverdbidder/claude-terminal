@@ -21,6 +21,7 @@ interface AppState {
   notifyOnFinish: boolean;
   restoreSession: boolean;
   telemetryEnabled: boolean;
+  showGitPanel: boolean;
 
   // Changes panel
   changesRefreshTrigger: number;
@@ -86,6 +87,7 @@ interface AppState {
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
   setTelemetryEnabled: (enabled: boolean) => void;
+  setShowGitPanel: (enabled: boolean) => void;
 
   // Grid actions
   toggleGridMode: () => void;
@@ -189,6 +191,7 @@ export const useAppStore = create<AppState>()(
       notifyOnFinish: true,
       restoreSession: true,
       telemetryEnabled: true,
+      showGitPanel: true,
 
       // Changes panel
       changesRefreshTrigger: 0,
@@ -254,6 +257,7 @@ export const useAppStore = create<AppState>()(
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
+      setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
 
       // Grid actions
       toggleGridMode: () => set((state) => ({ gridMode: !state.gridMode })),
@@ -360,6 +364,7 @@ export const useAppStore = create<AppState>()(
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
+        showGitPanel: state.showGitPanel,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
       }),

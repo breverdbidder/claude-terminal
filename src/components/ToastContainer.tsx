@@ -11,26 +11,30 @@ const ICON_MAP: Record<ToastType, typeof CheckCircle> = {
   info: Info,
 };
 
-const COLOR_MAP: Record<ToastType, { icon: string; bar: string; bg: string }> = {
+const COLOR_MAP: Record<ToastType, { icon: string; bar: string; tint: string; ring: string }> = {
   success: {
     icon: 'text-success',
     bar: 'bg-success',
-    bg: 'bg-success/[0.06]',
+    tint: 'bg-success/10',
+    ring: 'ring-success/40',
   },
   error: {
     icon: 'text-error',
     bar: 'bg-error',
-    bg: 'bg-error/[0.06]',
+    tint: 'bg-error/10',
+    ring: 'ring-error/40',
   },
   warning: {
     icon: 'text-warning',
     bar: 'bg-warning',
-    bg: 'bg-warning/[0.06]',
+    tint: 'bg-warning/10',
+    ring: 'ring-warning/40',
   },
   info: {
     icon: 'text-accent-primary',
     bar: 'bg-accent-primary',
-    bg: 'bg-accent-primary/[0.06]',
+    tint: 'bg-accent-primary/10',
+    ring: 'ring-accent-primary/40',
   },
 };
 
@@ -63,16 +67,15 @@ function ToastItem({ id, type, title, message, duration }: {
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 80, scale: 0.95 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`
-        relative overflow-hidden rounded-lg
-        bg-elevation-3 ${colors.bg}
-        ring-1 ring-white/[0.08]
-        shadow-elevation-3
-        w-[320px] pointer-events-auto
-      `}
+      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-[0_8px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl w-[320px] pointer-events-auto isolate`}
     >
+      {/* Colored tint layer — sits above the opaque base so the card stays opaque */}
+      <div className={`absolute inset-0 pointer-events-none ${colors.tint}`} />
+      {/* Left status accent bar */}
+      <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${colors.bar}`} />
+
       {/* Content */}
-      <div className="flex items-start gap-2.5 px-3 py-2.5">
+      <div className="relative flex items-start gap-2.5 px-3 py-2.5 pl-4">
         <Icon size={16} className={`${colors.icon} mt-0.5 shrink-0`} />
         <div className="flex-1 min-w-0">
           <p className="text-text-primary text-[12px] font-medium leading-tight">
@@ -94,10 +97,10 @@ function ToastItem({ id, type, title, message, duration }: {
 
       {/* Progress bar */}
       {duration > 0 && (
-        <div className="h-[2px] w-full bg-white/[0.04]">
+        <div className="relative h-[2px] w-full bg-white/[0.06]">
           <div
             ref={progressRef}
-            className={`h-full ${colors.bar} opacity-40`}
+            className={`h-full ${colors.bar} opacity-70`}
             style={{ width: '100%' }}
           />
         </div>
@@ -110,7 +113,7 @@ export function ToastContainer() {
   const toasts = useToastStore((s) => s.toasts);
 
   return (
-    <div className="fixed bottom-8 right-3 z-[9999] flex flex-col-reverse gap-2 pointer-events-none">
+    <div className="fixed bottom-8 right-3 z-[100000] flex flex-col-reverse gap-2 pointer-events-none">
       <AnimatePresence mode="popLayout">
         {toasts.map((t) => (
           <ToastItem key={t.id} {...t} />
