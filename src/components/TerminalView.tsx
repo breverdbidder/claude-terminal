@@ -5,10 +5,21 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
+
+function formatDroppedPath(path: string): string {
+  // Quote paths containing spaces or shell-special characters so the shell
+  // receives them as a single argument. Backslashes are preserved as-is
+  // (Windows paths like C:\Dev\foo work in both cmd and bash-for-Windows).
+  if (/[\s"'`$&|;<>()*?]/.test(path)) {
+    return `"${path.replace(/"/g, '\\"')}"`;
+  }
+  return path;
+}
 
 interface TerminalViewProps {
   terminalId: string;
@@ -19,6 +30,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   // Narrow selector — only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
@@ -191,6 +203,61 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, !!instance, toggleSearch]);
 
+  // OS → terminal file drag-drop. Tauri intercepts drag events at the window
+  // level and delivers physical-pixel positions, so we hit-test against this
+  // terminal's bounding rect to route drops in grid mode.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    const hitTest = (physX: number, physY: number): boolean => {
+      const el = containerRef.current;
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const x = physX / scale;
+      const y = physY / scale;
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    };
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === 'leave') {
+          setIsDragOver(false);
+          return;
+        }
+        const inside = hitTest(payload.position.x, payload.position.y);
+        if (payload.type === 'enter' || payload.type === 'over') {
+          setIsDragOver(inside);
+          return;
+        }
+        if (payload.type === 'drop') {
+          setIsDragOver(false);
+          if (!inside) return;
+          const paths = payload.paths ?? [];
+          if (paths.length === 0) return;
+          const text = paths.map(formatDroppedPath).join(' ') + ' ';
+          useTerminalStore.getState().writeToTerminal(terminalId, text).catch((err) => {
+            console.error(`Failed to write dropped paths to terminal ${terminalId}:`, err);
+          });
+          terminalRef.current?.focus();
+        }
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch((err) => {
+        console.warn('Failed to register drag-drop listener:', err);
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [terminalId]);
+
   return (
     <div className="h-full w-full bg-bg-primary relative flex flex-col">
       <TerminalSearch
@@ -200,9 +267,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       />
       <div
         ref={containerRef}
-        className="flex-1 min-h-0 w-full"
+        className="flex-1 min-h-0 w-full relative"
         onMouseDown={() => terminalRef.current?.focus()}
-      />
+      >
+        {isDragOver && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
+            <div className="bg-bg-primary/90 text-text-primary text-[13px] px-3 py-1.5 rounded-md ring-1 ring-accent-primary/40">
+              Drop file to paste path
+            </div>
+          </div>
+        )}
+      </div>
       <TerminalStatusBar terminalId={terminalId} />
     </div>
   );
