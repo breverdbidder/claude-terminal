@@ -12,13 +12,25 @@ import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
 
 function formatDroppedPath(path: string): string {
-  // Quote paths containing spaces or shell-special characters so the shell
-  // receives them as a single argument. Backslashes are preserved as-is
-  // (Windows paths like C:\Dev\foo work in both cmd and bash-for-Windows).
-  if (/[\s"'`$&|;<>()*?]/.test(path)) {
-    return `"${path.replace(/"/g, '\\"')}"`;
+  // Strip control characters — macOS/Linux filenames can legally contain
+  // newlines, which would otherwise auto-execute whatever follows in the PTY
+  // without the user pressing Enter.
+  const sanitized = path.replace(/[\x00-\x1f\x7f]/g, '');
+  const isWindowsPath = /^([a-zA-Z]:[\\/]|\\\\)/.test(sanitized);
+  if (isWindowsPath) {
+    // cmd/pwsh don't expand $ or backtick and don't process backslash escapes,
+    // so preserve backslashes as path separators and only escape embedded ".
+    if (/[\s"'`$&|;<>()*?]/.test(sanitized)) {
+      return `"${sanitized.replace(/"/g, '\\"')}"`;
+    }
+    return sanitized;
   }
-  return path;
+  // POSIX path → likely bash/zsh. Single quotes suppress all expansion; an
+  // embedded single quote is closed, escaped, and reopened.
+  if (/[\s"'`$&|;<>()*?\\]/.test(sanitized)) {
+    return `'${sanitized.replace(/'/g, "'\\''")}'`;
+  }
+  return sanitized;
 }
 
 interface TerminalViewProps {
