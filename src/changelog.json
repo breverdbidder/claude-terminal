@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.20.0",
+    "date": "2026-04-20",
+    "features": [
+      { "title": "Drag-and-drop files into terminal", "description": "Drop files or folders from Explorer onto any terminal (tabbed or grid) — paths are quoted and pasted at the cursor" },
+      { "title": "Git panel in File Changes", "description": "Repositories section lists the root repo, linked worktrees, and nested sub-repos (with branch, dirty flag, ahead/behind counts)" },
+      { "title": "Branch switcher in the titlebar", "description": "The branch pill is now an interactive dropdown — filter, pick a branch, one-click checkout with error toasts on dirty trees" },
+      { "title": "Per-file stage, unstage, and commit", "description": "Separate Staged / Changes sections with per-file + and − buttons, bulk Stage all / Unstage all, and stage-aware Commit / Commit & Push" },
+      { "title": "Stash, pop, and apply from the UI", "description": "Stash working changes, and manage existing stashes with Apply (keep) / Pop / Drop actions" },
+      { "title": "Reorder terminal tabs by drag", "description": "Drag tabs in the tab bar to change their order — reorder persists in the terminal store" },
+      { "title": "Readable toasts", "description": "Fixed transparent toast background — cards are now fully opaque with a coloured status ring, left accent bar, and top-most z-index" }
+    ]
+  },
+  {
     "version": "1.19.4",
     "date": "2026-04-18",
     "features": [
