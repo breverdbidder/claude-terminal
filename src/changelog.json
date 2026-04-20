@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.20.1",
+    "date": "2026-04-20",
+    "features": [
+      { "title": "Harden drag-and-drop path quoting", "description": "Strip control characters from dropped filenames to block newline-based command injection on macOS/Linux; POSIX paths now use single-quote wrapping to suppress $, backtick, and backslash expansion in bash/zsh, while Windows drive/UNC paths keep cmd/pwsh-safe double quoting" }
+    ]
+  },
+  {
     "version": "1.20.0",
     "date": "2026-04-20",
     "features": [
