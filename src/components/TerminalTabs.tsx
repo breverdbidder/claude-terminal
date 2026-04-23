@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { AnimatePresence, Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { Reorder } from 'framer-motion';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -9,14 +9,38 @@ import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { TeleportActions } from './TeleportActions';
 import { SessionInsights } from './SessionInsights';
+import { FileEditorView } from './FileEditorView';
+import { ScriptsMenu } from './ScriptsMenu';
+import { ScriptChildPane } from './ScriptChildPane';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
+
+function fileBasename(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals } = useTerminalStore();
-  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode } = useAppStore();
-  const terminalList = useMemo(() => Array.from(terminals.values()).map(t => t.config), [terminals]);
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
+  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+
+  // Selecting a terminal clears the file-tab focus (so terminal view shows),
+  // selecting a file clears the terminal focus-visual intent.
+  const focusTerminal = useCallback((id: string) => {
+    setActiveFilePath(null);
+    setActiveTerminal(id);
+  }, [setActiveFilePath, setActiveTerminal]);
+
+  const focusFile = useCallback((path: string) => {
+    setActiveFilePath(path);
+  }, [setActiveFilePath]);
+  // Script-child terminals are rendered below their parent — never as their own tab.
+  const terminalList = useMemo(
+    () => Array.from(terminals.values()).filter((t) => !t.scriptParentId).map((t) => t.config),
+    [terminals]
+  );
 
   const handleNewTab = () => {
     openNewTerminalModal();
@@ -191,20 +215,27 @@ export function TerminalTabs() {
                 className="flex-shrink-0"
               >
                 <button
-                  onClick={() => setActiveTerminal(terminal.id)}
+                  onClick={() => focusTerminal(terminal.id)}
+                  onAuxClick={(e) => {
+                    // Middle-click (mouse wheel) closes the tab — same as VS Code.
+                    if (e.button === 1) {
+                      e.preventDefault();
+                      closeTerminal(terminal.id);
+                    }
+                  }}
                   onDragOver={(e) => handleTabDragOver(e, terminal.id)}
                   onDragLeave={handleTabDragLeave}
                   onDrop={(e) => handleTabDrop(e, terminal.id)}
                   className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] transition-colors ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
-                      : activeTerminalId === terminal.id
+                      : activeTerminalId === terminal.id && !activeFilePath
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
                   }`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
-                  {(activeTerminalId === terminal.id || splitDropTargetId === terminal.id) && (
+                  {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
                     <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
                   )}
                   {splitDropTargetId === terminal.id && (
@@ -295,6 +326,74 @@ export function TerminalTabs() {
             })}
           </Reorder.Group>
 
+          {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
+          {openFiles.length > 0 && (
+            <>
+              {terminalList.length > 0 && (
+                <span className="w-px h-5 bg-[var(--ij-divider)] mx-0.5 flex-shrink-0" aria-hidden />
+              )}
+              <div className="flex items-center flex-shrink-0">
+                {openFiles.map((tab) => {
+                  const isActive = activeFilePath === tab.path;
+                  const dirty = tab.content !== tab.original;
+                  return (
+                    <button
+                      key={tab.path}
+                      onClick={() => focusFile(tab.path)}
+                      onAuxClick={(e) => {
+                        if (e.button !== 1) return;
+                        e.preventDefault();
+                        if (dirty) {
+                          const ok = window.confirm(`Discard unsaved changes in ${fileBasename(tab.path)}?`);
+                          if (!ok) return;
+                        }
+                        closeFileTab(tab.path);
+                      }}
+                      title={tab.path}
+                      className={`group relative flex items-center gap-1.5 px-3 h-9 text-[12px] transition-colors flex-shrink-0 ${
+                        isActive
+                          ? 'bg-elevation-0 text-text-primary'
+                          : 'hover:bg-white/[0.045] text-text-secondary'
+                      }`}
+                    >
+                      {isActive && (
+                        <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
+                      )}
+                      <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
+                      <span className="max-w-[140px] truncate">{fileBasename(tab.path)}</span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (dirty) {
+                            const ok = window.confirm(`Discard unsaved changes in ${fileBasename(tab.path)}?`);
+                            if (!ok) return;
+                          }
+                          closeFileTab(tab.path);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.stopPropagation();
+                            closeFileTab(tab.path);
+                          }
+                        }}
+                        className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
+                        title={dirty ? 'Unsaved changes' : 'Close'}
+                      >
+                        {dirty ? (
+                          <span className="w-2 h-2 rounded-full bg-accent-primary" />
+                        ) : (
+                          <X size={12} />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
           {canScrollRight && (
             <button
               onClick={() => scrollTabs('right')}
@@ -310,6 +409,16 @@ export function TerminalTabs() {
           >
             <Plus size={14} strokeWidth={1.75} />
           </button>
+        </div>
+
+        {/* Per-terminal actions: package.json scripts for the active terminal.
+            Hidden when the "Project Tools" setting is off. */}
+        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+          {showFileTree && activeTerminalId && !activeFilePath && (() => {
+            const inst = terminals.get(activeTerminalId);
+            if (!inst || inst.scriptParentId) return null;
+            return <ScriptsMenu terminalId={activeTerminalId} cwd={inst.config.working_directory} />;
+          })()}
         </div>
 
         {/* Grid Mode Toggle */}
@@ -334,15 +443,20 @@ export function TerminalTabs() {
         </div>
       </div>
 
-      {/* Terminal Content */}
+      {/* Content area — terminal stays mounted so scrollback survives the
+          switch; the file editor overlays on top when a file tab is active. */}
       <div className="flex-1 relative">
-        <AnimatePresence mode="wait">
-          {activeTerminalId ? (
+        {activeTerminalId && (() => {
+          const scriptChildId = scriptChildren.get(activeTerminalId);
+          const scriptInst = scriptChildId ? terminals.get(scriptChildId) : null;
+          return (
             <div
               key={activeTerminalId}
               className="absolute inset-0 flex flex-col"
+              style={{ visibility: activeFilePath ? 'hidden' : 'visible' }}
+              aria-hidden={!!activeFilePath}
             >
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 flex flex-col">
                 <TerminalView terminalId={activeTerminalId} />
               </div>
               {(() => {
@@ -352,8 +466,24 @@ export function TerminalTabs() {
                 }
                 return null;
               })()}
+              {scriptInst && scriptChildId && (
+                <ScriptChildPane
+                  parentId={activeTerminalId}
+                  childId={scriptChildId}
+                  scriptName={scriptInst.scriptName ?? ''}
+                  status={scriptInst.config.status}
+                  onClose={() => { void closeScript(activeTerminalId); }}
+                />
+              )}
             </div>
-          ) : (
+          );
+        })()}
+        {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
+          <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10">
+            <FileEditorView path={activeFilePath} />
+          </div>
+        )}
+        {!activeTerminalId && !activeFilePath && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">
               <img
                 src={appIconUrl}
@@ -397,8 +527,7 @@ export function TerminalTabs() {
                 )}
               </div>
             </div>
-          )}
-        </AnimatePresence>
+        )}
       </div>
     </div>
   );

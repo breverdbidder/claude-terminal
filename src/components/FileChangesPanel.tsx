@@ -67,6 +67,7 @@ export function FileChangesPanel() {
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
   const openWorktreeModal = useAppStore((s) => s.openWorktreeModal);
   const showGitPanel = useAppStore((s) => s.showGitPanel);
+  const setPinnedRepoPath = useAppStore((s) => s.setPinnedRepoPath);
   const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
   const activeCwd = useMemo(() => {
     if (!activeTerminalId) return null;
@@ -87,6 +88,14 @@ export function FileChangesPanel() {
 
   // Reset selection when the active terminal changes
   useEffect(() => { setSelectedRepoPath(null); }, [activeTerminalId]);
+
+  // Publish the explicit repo pin so other panels (file tree) can follow it.
+  // Only publish when the user has actually selected a nested repo — otherwise
+  // other panels fall back to the active terminal's cwd.
+  useEffect(() => {
+    setPinnedRepoPath(selectedRepoPath);
+    return () => setPinnedRepoPath(null);
+  }, [selectedRepoPath, setPinnedRepoPath]);
 
   // Commit / push / stash state
   const [commitMessage, setCommitMessage] = useState('');
@@ -465,6 +474,7 @@ export function FileChangesPanel() {
             setExpandedFile={setExpandedFile}
             activeTerminalId={activeTerminalId}
             pathOverride={usingSelectedRepo ? selectedRepoPath : null}
+            repoRoot={activePath}
             stagingPaths={stagingPaths}
             onStage={stageFiles}
             onUnstage={unstageFiles}
@@ -482,6 +492,7 @@ export function FileChangesPanel() {
             setExpandedFile={setExpandedFile}
             activeTerminalId={activeTerminalId}
             pathOverride={usingSelectedRepo ? selectedRepoPath : null}
+            repoRoot={activePath}
             stagingPaths={stagingPaths}
             onStage={stageFiles}
             onUnstage={unstageFiles}
@@ -666,16 +677,55 @@ interface ChangeGroupProps {
   setExpandedFile: (v: string | null) => void;
   activeTerminalId: string | null;
   pathOverride: string | null;
+  repoRoot: string | null;
   stagingPaths: Set<string>;
   onStage: (files: string[]) => void;
   onUnstage: (files: string[]) => void;
   onBulk: () => void;
 }
 
+function joinRepoPath(root: string, relative: string): string {
+  // Normalize both sides to forward slashes so the result is valid on Windows
+  // (std::fs accepts either) and free of doubled-up separators when `relative`
+  // contains escapes. Git's porcelain output always uses forward slashes.
+  const cleanRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  const cleanRel = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+  // Strip any surrounding quotes git may add for paths with special chars.
+  const unquotedRel = cleanRel.startsWith('"') && cleanRel.endsWith('"')
+    ? cleanRel.slice(1, -1)
+    : cleanRel;
+  return `${cleanRoot}/${unquotedRel}`;
+}
+
 function ChangeGroup({
   title, count, files, staged, expandedFile, setExpandedFile,
-  activeTerminalId, pathOverride, stagingPaths, onStage, onUnstage, onBulk,
+  activeTerminalId, pathOverride, repoRoot, stagingPaths, onStage, onUnstage, onBulk,
 }: ChangeGroupProps) {
+  const openDiffTab = useAppStore((s) => s.openDiffTab);
+  const triggerRefresh = useAppStore((s) => s.triggerChangesRefresh);
+  const closeFileTab = useAppStore((s) => s.closeFileTab);
+
+  const handleDiscard = useCallback(async (file: FileChange) => {
+    if (!repoRoot) return;
+    const label = file.path.split(/[\\/]/).pop() ?? file.path;
+    const verb = file.status === 'untracked' ? 'delete the untracked file' : 'discard all changes in';
+    const ok = window.confirm(`${verb === 'delete the untracked file' ? 'Delete' : 'Discard'}: ${label}?\n\n${verb} "${file.path}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await invoke('git_discard_file', {
+        path: repoRoot,
+        file: file.path,
+        untracked: file.status === 'untracked',
+      });
+      // If the file was open in the editor, close it — its contents no longer match disk.
+      const abs = joinRepoPath(repoRoot, file.path);
+      closeFileTab(abs);
+      toast.success('Discarded', label);
+      triggerRefresh();
+    } catch (err) {
+      toast.error('Discard failed', typeof err === 'string' ? err : 'Unknown error');
+    }
+  }, [repoRoot, triggerRefresh, closeFileTab]);
   return (
     <div className="mb-2">
       <div className="flex items-center justify-between px-2 py-1 border-b border-border/30 mb-1">
@@ -721,6 +771,30 @@ function ChangeGroup({
               <p className={`flex-1 text-[12px] font-mono truncate ${config.color}`} title={file.path}>
                 {file.path}
               </p>
+              {repoRoot && file.status !== 'deleted' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void openDiffTab(joinRepoPath(repoRoot, file.path), repoRoot, file.path);
+                  }}
+                  className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:bg-white/[0.08] hover:text-text-primary"
+                  title="Open diff in editor"
+                >
+                  <FileEdit size={11} />
+                </button>
+              )}
+              {repoRoot && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDiscard(file);
+                  }}
+                  className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:bg-red-500/20 hover:text-red-400"
+                  title={file.status === 'untracked' ? 'Delete untracked file' : 'Discard all changes'}
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();

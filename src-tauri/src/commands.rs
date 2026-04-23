@@ -787,7 +787,7 @@ pub struct WorktreeDetectResult {
 async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_path = std::path::Path::new(path)
         .canonicalize()
-        .map_err(|_| "Invalid path: directory does not exist".to_string())?;
+        .map_err(|e| format!("Invalid path '{}': {}", path, e))?;
 
     let terminals = state.terminals.lock().await;
     let known_dirs = terminals.get_all_configs();
@@ -804,7 +804,10 @@ async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Re
     });
 
     if !is_trusted {
-        return Err("Path is not associated with any active terminal session".to_string());
+        return Err(format!(
+            "Path '{}' is not under any active terminal's working directory",
+            canonical_path.display()
+        ));
     }
     Ok(())
 }
@@ -2618,4 +2621,275 @@ pub async fn git_pull_branch(
         format!("{}\n{}", stdout, stderr)
     };
     Ok(combined)
+}
+
+#[derive(Debug, Serialize)]
+pub struct PackageScript {
+    pub name: String,
+    pub command: String,
+}
+
+/// Read `package.json` at the given directory and return its `scripts` map as
+/// an ordered list. Empty vec if no package.json exists or no scripts key.
+#[command]
+pub async fn list_package_scripts(
+    state: State<'_, AppState>,
+    cwd: String,
+) -> Result<Vec<PackageScript>, String> {
+    validate_path_is_trusted(&state, &cwd).await?;
+
+    let pkg_path = std::path::Path::new(&cwd).join("package.json");
+    let bytes = match std::fs::read(&pkg_path) {
+        Ok(b) => b,
+        Err(_) => return Ok(vec![]), // no package.json → no scripts, not an error
+    };
+    let json: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid package.json: {}", e))?;
+    let scripts = match json.get("scripts").and_then(|v| v.as_object()) {
+        Some(m) => m,
+        None => return Ok(vec![]),
+    };
+    let result: Vec<PackageScript> = scripts
+        .iter()
+        .filter_map(|(name, val)| {
+            val.as_str().map(|command| PackageScript {
+                name: name.clone(),
+                command: command.to_string(),
+            })
+        })
+        .collect();
+    Ok(result)
+}
+
+/// Spawn a child terminal that runs `npm run <script>` in the given cwd.
+/// The returned terminal config has the same shape as `create_terminal` so
+/// the frontend can reuse the regular terminal rendering pipeline.
+#[command]
+pub async fn create_script_terminal(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    cwd: String,
+    script_name: String,
+) -> Result<crate::terminal::TerminalConfig, String> {
+    validate_path_is_trusted(&state, &cwd).await?;
+
+    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+
+    let config = {
+        let mut terminals = state.terminals.lock().await;
+        terminals.create_script_terminal(
+            format!("npm run {}", script_name),
+            cwd,
+            script_name,
+            tx,
+        )?
+    };
+
+    let terminal_id = config.id.clone();
+    let terminals_arc = state.terminals.clone();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        while let Some((id, data)) = rx.recv().await {
+            if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
+                "id": id,
+                "data": data,
+            })) {
+                eprintln!("Failed to emit terminal-output: {}", e);
+                break;
+            }
+        }
+        if let Ok(mut manager) = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            terminals_arc.lock(),
+        ).await {
+            let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+        }
+        if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+            eprintln!("Failed to emit terminal-finished: {}", e);
+        }
+    });
+
+    Ok(config)
+}
+
+/// Return the HEAD version of a file as a string. Used by the diff editor to
+/// show original vs current working copy. Returns an empty string if the file
+/// has no HEAD version (e.g., newly-added or untracked).
+#[command]
+pub async fn get_git_head_content(
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+) -> Result<String, String> {
+    validate_path_is_trusted(&state, &path).await?;
+    if file.is_empty() || file.starts_with('-') {
+        return Err("Invalid file path".to_string());
+    }
+    // git uses forward slashes in ref specs, even on Windows.
+    let normalized = file.replace('\\', "/");
+    let spec = format!("HEAD:{}", normalized);
+    let output = shell_command("git", &["show", &spec])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git show: {}", e))?;
+    if !output.status.success() {
+        // File has no HEAD version — treat as empty (new/untracked file).
+        return Ok(String::new());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Discard all changes to a single file: restores index + worktree to HEAD for
+/// tracked files, deletes from disk for untracked files/dirs. Destructive.
+#[command]
+pub async fn git_discard_file(
+    state: State<'_, AppState>,
+    path: String,
+    file: String,
+    untracked: bool,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+    if file.is_empty() || file.starts_with('-') {
+        return Err("Invalid file path".to_string());
+    }
+
+    if untracked {
+        // Untracked files/directories aren't tracked by git — just remove from disk.
+        // `file` is relative to `path`. Resolve and sanity-check it ends up inside
+        // the repo to avoid `..` escapes.
+        let joined = std::path::Path::new(&path).join(&file);
+        let canonical_target = joined.canonicalize().map_err(|e| {
+            format!("Cannot resolve '{}': {}", joined.display(), e)
+        })?;
+        let canonical_root = std::path::Path::new(&path)
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve repo '{}': {}", path, e))?;
+        if !canonical_target.starts_with(&canonical_root) {
+            return Err(format!(
+                "Refusing to delete path outside repo: {}",
+                canonical_target.display()
+            ));
+        }
+        let meta = std::fs::metadata(&canonical_target)
+            .map_err(|e| format!("Failed to stat '{}': {}", canonical_target.display(), e))?;
+        if meta.is_dir() {
+            std::fs::remove_dir_all(&canonical_target)
+                .map_err(|e| format!("Failed to delete directory: {}", e))?;
+        } else {
+            std::fs::remove_file(&canonical_target)
+                .map_err(|e| format!("Failed to delete file: {}", e))?;
+        }
+        return Ok(());
+    }
+
+    // Tracked file — reset index + worktree for just this file to HEAD.
+    let output = shell_command("git", &["checkout", "HEAD", "--", &file])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout } else { "git checkout failed".into() });
+    }
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File tree / editor commands
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct DirEntryInfo {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+    pub size: u64,
+}
+
+/// List the immediate children of a directory. Does NOT recurse — the UI
+/// requests children lazily when the user expands a folder.
+#[command]
+pub async fn list_directory(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Vec<DirEntryInfo>, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let mut entries: Vec<DirEntryInfo> = Vec::new();
+    let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
+    for entry in read_dir.flatten() {
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let full_path = entry.path().to_string_lossy().to_string();
+        entries.push(DirEntryInfo {
+            name: file_name,
+            path: full_path,
+            is_dir: meta.is_dir(),
+            is_symlink: meta.file_type().is_symlink(),
+            size: if meta.is_file() { meta.len() } else { 0 },
+        });
+    }
+
+    // VS Code ordering: folders first, then files, each alphabetical (case-insensitive).
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(entries)
+}
+
+/// Read a file as UTF-8 text. Refuses binary files and very large files so the
+/// editor can't be used to OOM the app.
+#[command]
+pub async fn read_text_file(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+    if meta.is_dir() {
+        return Err("Path is a directory".to_string());
+    }
+    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
+    if meta.len() > MAX_BYTES {
+        return Err(format!(
+            "File is too large to edit in-app ({} bytes, max {}).",
+            meta.len(),
+            MAX_BYTES
+        ));
+    }
+
+    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+    // Quick binary sniff: any NUL byte in the first 8 KB → binary.
+    let sniff_len = bytes.len().min(8192);
+    if bytes[..sniff_len].contains(&0u8) {
+        return Err("File appears to be binary and cannot be edited as text.".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8.".to_string())
+}
+
+/// Write UTF-8 text back to a file. Refuses to create new paths — the file must
+/// already exist in a trusted location.
+#[command]
+pub async fn write_text_file(
+    state: State<'_, AppState>,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    validate_path_is_trusted(&state, &path).await?;
+
+    let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+    if meta.is_dir() {
+        return Err("Path is a directory".to_string());
+    }
+    std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
 }
