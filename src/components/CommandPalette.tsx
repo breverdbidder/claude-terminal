@@ -249,7 +249,7 @@ export function CommandPalette() {
   return (
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
-      onClick={closeCommandPalette}
+      onDoubleClick={closeCommandPalette}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: -8 }}
@@ -257,7 +257,7 @@ export function CommandPalette() {
         exit={{ opacity: 0, scale: 0.96, y: -8 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
         className="mx-auto mt-[15vh] w-full max-w-[550px]"
-        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         <div className="bg-elevation-4 ring-1 ring-white/[0.08] rounded-xl shadow-elevation-4 overflow-hidden">
           {/* Search Input */}
