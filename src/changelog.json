@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.20.4",
+    "date": "2026-04-23",
+    "features": [
+      { "title": "File Explorer in the sidebar", "description": "VS Code–style file tree rooted at the active terminal's folder (or the pinned repo in File Changes); drag the horizontal splitter between the terminal list and the Explorer to resize" },
+      { "title": "Inline Monaco editor tabs", "description": "Click a file in the Explorer or the pencil in File Changes to open it as a tab next to the terminals; per-path models preserve cursor, selection, and undo when switching" },
+      { "title": "Diff view from File Changes", "description": "Opening a changed file shows a side-by-side HEAD vs working-copy diff; toolbar toggle flips between Diff and Edit modes" },
+      { "title": "Discard changes per file", "description": "Trash icon on each changed file reverts tracked files to HEAD or deletes untracked files (with confirmation); auto-closes the editor tab" },
+      { "title": "package.json scripts runner", "description": "Scripts menu in the tab bar plus inline \"▶ Run Script\" CodeLens when viewing a package.json; selected scripts run in a drag-resizable split terminal below the active one and close with the parent" },
+      { "title": "Middle-click to close tabs", "description": "Mouse-wheel click closes any tab (terminal or file); dirty files prompt before closing" },
+      { "title": "Project Tools setting", "description": "Single toggle in Settings shows/hides the Explorer and the package.json scripts runner UI together" }
+    ]
+  },
+  {
     "version": "1.20.3",
     "date": "2026-04-20",
     "features": [
