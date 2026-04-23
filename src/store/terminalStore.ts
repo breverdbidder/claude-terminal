@@ -30,6 +30,10 @@ interface TerminalInstance {
   isWorktree: boolean;
   loopInfo?: LoopInfo | null;
   sessionSummary?: string | null;
+  // Script-child metadata: when set, this terminal is an npm-script runner
+  // spawned below a parent terminal. Excluded from the tab list and sidebar.
+  scriptName?: string;
+  scriptParentId?: string;
 }
 
 interface TerminalState {
@@ -37,6 +41,8 @@ interface TerminalState {
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
   gitInfoCache: Map<string, WorktreeDetectResult>;
+  // Parent terminal ID → script child terminal ID (one child per parent).
+  scriptChildren: Map<string, string>;
 
   createTerminal: (
     label: string,
@@ -63,6 +69,14 @@ interface TerminalState {
   hasUnread: (id: string) => boolean;
   fetchGitInfo: (terminalId: string) => Promise<void>;
   reorderTerminals: (orderedIds: string[]) => void;
+
+  // Run an npm script in a child terminal tied to the given parent. Returns
+  // the new child's id. If the parent already has a script running, that
+  // child is closed first so the new one replaces it. `cwdOverride` lets the
+  // caller run the script in a directory other than the parent's cwd — used
+  // by the package.json CodeLens, where the script's cwd is the file's folder.
+  runScript: (parentId: string, scriptName: string, cwdOverride?: string) => Promise<string>;
+  closeScript: (parentId: string) => Promise<void>;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -70,6 +84,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
   gitInfoCache: new Map(),
+  scriptChildren: new Map(),
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
@@ -116,6 +131,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   closeTerminal: async (id) => {
+    // If this terminal owns a script child, kill it first so it doesn't linger
+    // as an orphan (visible only via devtools).
+    const childId = get().scriptChildren.get(id);
+    if (childId) {
+      try { await invoke('close_terminal', { id: childId }); } catch { /* already gone */ }
+    }
+
     await invoke('close_terminal', { id });
 
     set((state) => {
@@ -126,17 +148,32 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       }
       newTerminals.delete(id);
 
+      // Also drop any script child from the terminal map.
+      if (childId) {
+        const childInst = newTerminals.get(childId);
+        if (childInst?.xterm) childInst.xterm.dispose();
+        newTerminals.delete(childId);
+      }
+
       const newUnread = new Set(state.unreadTerminalIds);
       newUnread.delete(id);
 
       const newGitCache = new Map(state.gitInfoCache);
       newGitCache.delete(id);
 
-      const remainingIds = Array.from(newTerminals.keys());
+      const newChildren = new Map(state.scriptChildren);
+      newChildren.delete(id);
+
+      // Only pick a fallback from non-child terminals; script children must
+      // never become the "active tab".
+      const remainingIds = Array.from(newTerminals.values())
+        .filter((t) => !t.scriptParentId)
+        .map((t) => t.config.id);
       return {
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
         gitInfoCache: newGitCache,
+        scriptChildren: newChildren,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -307,4 +344,57 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
     return { terminals: next };
   }),
+
+  runScript: async (parentId, scriptName, cwdOverride) => {
+    const parent = get().terminals.get(parentId);
+    if (!parent) throw new Error('Parent terminal not found');
+
+    // Replace any existing script child for this parent so the UI always
+    // shows the most recently-requested script.
+    const existingChildId = get().scriptChildren.get(parentId);
+    if (existingChildId) {
+      await get().closeScript(parentId).catch(() => {});
+    }
+
+    const cwd = cwdOverride ?? parent.config.working_directory;
+    const config = await invoke<TerminalConfig>('create_script_terminal', {
+      cwd,
+      scriptName,
+    });
+
+    set((state) => {
+      const nextTerminals = new Map(state.terminals);
+      nextTerminals.set(config.id, {
+        config,
+        xterm: null,
+        isWorktree: false,
+        scriptName,
+        scriptParentId: parentId,
+      });
+      const nextChildren = new Map(state.scriptChildren);
+      nextChildren.set(parentId, config.id);
+      return { terminals: nextTerminals, scriptChildren: nextChildren };
+    });
+
+    return config.id;
+  },
+
+  closeScript: async (parentId) => {
+    const childId = get().scriptChildren.get(parentId);
+    if (!childId) return;
+    try {
+      await invoke('close_terminal', { id: childId });
+    } catch {
+      // Already closed — fall through to store cleanup.
+    }
+    set((state) => {
+      const nextTerminals = new Map(state.terminals);
+      const inst = nextTerminals.get(childId);
+      if (inst?.xterm) inst.xterm.dispose();
+      nextTerminals.delete(childId);
+      const nextChildren = new Map(state.scriptChildren);
+      nextChildren.delete(parentId);
+      return { terminals: nextTerminals, scriptChildren: nextChildren };
+    });
+  },
 }));

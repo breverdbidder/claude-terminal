@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight, UserCog } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
+import { FileTreePanel } from './FileTreePanel';
 
 const STATUS_COLORS = {
   Running: 'bg-success',
@@ -27,10 +28,50 @@ export function Sidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds, gitInfoCache } = useTerminalStore();
-  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode } = useAppStore();
+  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode, showFileTree, explorerHeightRatio, setExplorerHeightRatio } = useAppStore();
+
+  // Splitter between terminal list and Explorer. Measures the stack's bounding
+  // rect during drag so the ratio is always computed relative to the sidebar's
+  // current height, not a cached value.
+  const splitStackRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const onSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const el = splitStackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const y = e.clientY - rect.top;
+      // explorerHeightRatio is the explorer's share, so it's 1 - (terminalShare)
+      const terminalShare = y / rect.height;
+      setExplorerHeightRatio(1 - terminalShare);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [setExplorerHeightRatio]);
 
   const terminalList = useMemo(() =>
     Array.from(terminals.values())
+      // Script children belong under their parent in the main area, not the sidebar.
+      .filter(t => !t.scriptParentId)
       .map(t => t.config)
       .filter(t => {
         const searchLower = search.toLowerCase();
@@ -67,7 +108,7 @@ export function Sidebar() {
         </button>
         <div className="h-px w-6 bg-[var(--ij-divider-soft)] my-2" />
         <div className="flex-1 overflow-y-auto flex flex-col items-center gap-0.5 w-full px-1">
-          {Array.from(terminals.values()).map((instance) => {
+          {Array.from(terminals.values()).filter((instance) => !instance.scriptParentId).map((instance) => {
             const t = instance.config;
             const isActive = activeTerminalId === t.id;
             const hasUnread = unreadTerminalIds.has(t.id) && !isActive;
@@ -140,8 +181,13 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Terminal list + Explorer stack (with draggable splitter between them when showFileTree) */}
+      <div ref={splitStackRef} className="flex-1 min-h-0 flex flex-col">
       {/* Terminal List */}
-      <div className="flex-1 overflow-y-auto p-1.5">
+      <div
+        className="min-h-0 overflow-y-auto p-1.5"
+        style={showFileTree ? { flex: `${1 - explorerHeightRatio} 1 0` } : { flex: '1 1 0' }}
+      >
         {terminalList.map((terminal) => (
           <div
             key={terminal.id}
@@ -389,6 +435,26 @@ export function Sidebar() {
             {search ? 'No terminals found' : 'No terminals yet'}
           </div>
         )}
+      </div>
+
+      {/* Explorer (file tree) — with a draggable splitter above it */}
+      {showFileTree && (
+        <>
+          <div
+            onMouseDown={onSplitterMouseDown}
+            role="separator"
+            aria-orientation="horizontal"
+            title="Drag to resize Explorer"
+            className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-accent-primary/50 active:bg-accent-primary/70 transition-colors"
+          />
+          <div
+            className="min-h-0 flex flex-col"
+            style={{ flex: `${explorerHeightRatio} 1 0` }}
+          >
+            <FileTreePanel />
+          </div>
+        </>
+      )}
       </div>
 
       {/* Footer — tool links */}

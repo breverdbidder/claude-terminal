@@ -17,7 +17,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, showGitPanel, setShowGitPanel } = useAppStore();
+  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree } = useAppStore();
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -321,6 +321,33 @@ export function SettingsModal() {
                   <span
                     className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
                       notifyOnFinish ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Project tools (file tree + scripts runner) */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Project Tools</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-text-primary text-[13px]">File tree &amp; package.json scripts</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    Show the Explorer in the sidebar and enable the <span className="font-mono">package.json</span> scripts runner.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowFileTree(!showFileTree)}
+                  className={`relative w-10 h-5 rounded-full flex-shrink-0 mt-0.5 transition-colors ${
+                    showFileTree ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      showFileTree ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>

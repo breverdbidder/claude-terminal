@@ -247,6 +247,127 @@ impl TerminalManager {
         Ok(config)
     }
 
+    /// Spawn a PTY running `npm run <script>` in the given working directory.
+    /// Used by the package.json scripts runner. Reuses the same reader thread
+    /// plumbing as `create_terminal` so frontend handling is unchanged.
+    pub fn create_script_terminal(
+        &mut self,
+        label: String,
+        working_directory: String,
+        script_name: String,
+        tx: mpsc::Sender<(String, Vec<u8>)>,
+    ) -> Result<TerminalConfig, String> {
+        // npm script names come from package.json keys but the user picks them
+        // via UI, so reject any shell metacharacter as defense-in-depth.
+        if script_name.is_empty() || script_name.contains(Self::SHELL_METACHARACTERS) {
+            return Err(format!("Invalid script name: '{}'", script_name));
+        }
+
+        let pty_system = native_pty_system();
+        let pty_pair = pty_system
+            .openpty(PtySize {
+                rows: 30,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to open pty: {}", e))?;
+
+        #[cfg(target_os = "windows")]
+        let cmd = {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/C");
+            c.arg("npm");
+            c.arg("run");
+            c.arg(&script_name);
+            c
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let cmd = {
+            const VALID_SHELLS: &[&str] = &[
+                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
+                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
+                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
+                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+            ];
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
+            let mut c = CommandBuilder::new(&shell);
+            // Single-quote the script name as defense-in-depth (already validated above).
+            let mut full = String::from("npm run '");
+            for ch in script_name.chars() {
+                if ch == '\'' { full.push_str("'\\''"); } else { full.push(ch); }
+            }
+            full.push('\'');
+            c.arg("-lc");
+            c.arg(&full);
+            c
+        };
+
+        let mut cmd = cmd;
+        if !working_directory.is_empty() {
+            cmd.cwd(&working_directory);
+        }
+
+        let _child = pty_pair.slave.spawn_command(cmd)
+            .map_err(|e| format!("Failed to spawn npm run {}: {}", script_name, e))?;
+
+        let id = Uuid::new_v4().to_string();
+        let config = TerminalConfig {
+            id: id.clone(),
+            label,
+            nickname: Some(format!("npm run {}", script_name)),
+            profile_id: None,
+            working_directory,
+            // Reuse claude_args to carry the script command — simplest fit for
+            // restore / session history without adding another schema field.
+            claude_args: vec!["__script__".into(), script_name.clone()],
+            env_vars: HashMap::new(),
+            created_at: Utc::now(),
+            status: TerminalStatus::Running,
+            color_tag: None,
+        };
+
+        let mut reader = pty_pair.master.try_clone_reader()
+            .map_err(|e| format!("Failed to clone reader: {}", e))?;
+        let writer = pty_pair.master.take_writer()
+            .map_err(|e| format!("Failed to take writer: {}", e))?;
+
+        let terminal_id = id.clone();
+        let reader_handle = std::thread::spawn(move || {
+            let mut buf = [0u8; 32 * 1024];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = buf[..n].to_vec();
+                        if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send((
+                            terminal_id.clone(),
+                            format!("\r\n[Error: {}]\r\n", e).into_bytes(),
+                        ));
+                        break;
+                    }
+                }
+            }
+        });
+
+        self.terminals.insert(
+            id.clone(),
+            Terminal {
+                config: config.clone(),
+                pty_pair,
+                writer,
+                reader_handle: Some(reader_handle),
+            },
+        );
+
+        Ok(config)
+    }
+
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal

@@ -112,6 +112,13 @@ fn main() {
             commands::write_memory_file,
             commands::list_claude_md_files,
             commands::scan_git_repos,
+            commands::list_directory,
+            commands::read_text_file,
+            commands::write_text_file,
+            commands::git_discard_file,
+            commands::get_git_head_content,
+            commands::list_package_scripts,
+            commands::create_script_terminal,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

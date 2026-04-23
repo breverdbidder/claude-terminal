@@ -1,9 +1,27 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { invoke } from '@tauri-apps/api/core';
 
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
 export type SplitOrientation = 'horizontal' | 'vertical';
+
+export interface FileTabState {
+  path: string;
+  content: string;
+  original: string;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  // 'edit' → plain Monaco editor. 'diff' → Monaco DiffEditor showing HEAD vs working copy.
+  mode: 'edit' | 'diff';
+  // HEAD version, used as the "original" side in diff mode. Empty string for
+  // new/untracked files. Always present so the user can toggle into diff mode.
+  headContent: string;
+  // Repo context for re-fetching HEAD (mode switches, reloads).
+  repoRoot: string | null;
+  relativePath: string | null;
+}
 
 interface AppState {
   sidebarOpen: boolean;
@@ -22,9 +40,20 @@ interface AppState {
   restoreSession: boolean;
   telemetryEnabled: boolean;
   showGitPanel: boolean;
+  showFileTree: boolean;
 
   // Changes panel
   changesRefreshTrigger: number;
+
+  // Shared repo selection — file changes panel pins a repo, file tree follows it
+  pinnedRepoPath: string | null;
+
+  // File tabs (Monaco editor tabs living next to terminal tabs)
+  openFiles: FileTabState[];
+  activeFilePath: string | null;
+
+  // Sidebar layout
+  explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
 
   // Grid state
   gridMode: boolean;
@@ -88,6 +117,18 @@ interface AppState {
   setRestoreSession: (enabled: boolean) => void;
   setTelemetryEnabled: (enabled: boolean) => void;
   setShowGitPanel: (enabled: boolean) => void;
+  setShowFileTree: (enabled: boolean) => void;
+  setPinnedRepoPath: (path: string | null) => void;
+  openFileTab: (path: string) => Promise<void>;
+  openDiffTab: (path: string, repoRoot: string, relativePath: string) => Promise<void>;
+  closeFileTab: (path: string) => void;
+  setActiveFilePath: (path: string | null) => void;
+  setFileTabContent: (path: string, content: string) => void;
+  setFileTabError: (path: string, error: string | null) => void;
+  setFileTabMode: (path: string, mode: 'edit' | 'diff') => void;
+  saveFileTab: (path: string) => Promise<void>;
+  reloadFileTab: (path: string) => Promise<void>;
+  setExplorerHeightRatio: (ratio: number) => void;
 
   // Grid actions
   toggleGridMode: () => void;
@@ -192,9 +233,20 @@ export const useAppStore = create<AppState>()(
       restoreSession: true,
       telemetryEnabled: true,
       showGitPanel: true,
+      showFileTree: true,
 
       // Changes panel
       changesRefreshTrigger: 0,
+
+      // Shared repo selection
+      pinnedRepoPath: null,
+
+      // File tabs
+      openFiles: [],
+      activeFilePath: null,
+
+      // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
+      explorerHeightRatio: 0.45,
 
       // Grid state
       gridMode: false,
@@ -258,6 +310,185 @@ export const useAppStore = create<AppState>()(
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
+      setShowFileTree: (enabled) => set({ showFileTree: enabled }),
+      setPinnedRepoPath: (path) => set({ pinnedRepoPath: path }),
+      setExplorerHeightRatio: (ratio) => set({
+        explorerHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
+      }),
+
+      setActiveFilePath: (path) => set({ activeFilePath: path }),
+
+      setFileTabContent: (path, content) => set((state) => ({
+        openFiles: state.openFiles.map((t) =>
+          t.path === path ? { ...t, content } : t
+        ),
+      })),
+
+      setFileTabError: (path, error) => set((state) => ({
+        openFiles: state.openFiles.map((t) =>
+          t.path === path ? { ...t, error, loading: false } : t
+        ),
+      })),
+
+      openFileTab: async (path) => {
+        const existing = (useAppStore.getState().openFiles).find((t) => t.path === path);
+        if (existing) {
+          set({ activeFilePath: path });
+          return;
+        }
+        set((state) => ({
+          openFiles: [
+            ...state.openFiles,
+            { path, content: '', original: '', loading: true, saving: false, error: null, mode: 'edit', headContent: '', repoRoot: null, relativePath: null },
+          ],
+          activeFilePath: path,
+        }));
+        try {
+          const text = await invoke<string>('read_text_file', { path });
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, content: text, original: text, loading: false, error: null } : t
+            ),
+          }));
+        } catch (err) {
+          const message = typeof err === 'string' ? err : 'Failed to read file';
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, loading: false, error: message } : t
+            ),
+          }));
+        }
+      },
+
+      openDiffTab: async (path, repoRoot, relativePath) => {
+        // If already open, just switch into diff mode (fetch HEAD if not loaded).
+        const existing = useAppStore.getState().openFiles.find((t) => t.path === path);
+        if (existing) {
+          set({ activeFilePath: path });
+          // Ensure repo context + mode are set so the toggle works.
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path
+                ? { ...t, mode: 'diff', repoRoot, relativePath }
+                : t
+            ),
+          }));
+          // If HEAD content hasn't been fetched yet, grab it.
+          if (!existing.repoRoot) {
+            try {
+              const head = await invoke<string>('get_git_head_content', { path: repoRoot, file: relativePath });
+              set((state) => ({
+                openFiles: state.openFiles.map((t) =>
+                  t.path === path ? { ...t, headContent: head } : t
+                ),
+              }));
+            } catch {
+              // Non-fatal — leave headContent empty; diff will render against "".
+            }
+          }
+          return;
+        }
+        // Fresh open: fetch both sides in parallel so the diff appears in one render.
+        set((state) => ({
+          openFiles: [
+            ...state.openFiles,
+            { path, content: '', original: '', loading: true, saving: false, error: null, mode: 'diff', headContent: '', repoRoot, relativePath },
+          ],
+          activeFilePath: path,
+        }));
+        try {
+          const [text, head] = await Promise.all([
+            invoke<string>('read_text_file', { path }),
+            invoke<string>('get_git_head_content', { path: repoRoot, file: relativePath }).catch(() => ''),
+          ]);
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, content: text, original: text, headContent: head, loading: false, error: null } : t
+            ),
+          }));
+        } catch (err) {
+          const message = typeof err === 'string' ? err : 'Failed to read file';
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, loading: false, error: message } : t
+            ),
+          }));
+        }
+      },
+
+      setFileTabMode: (path, mode) => set((state) => ({
+        openFiles: state.openFiles.map((t) =>
+          t.path === path ? { ...t, mode } : t
+        ),
+      })),
+
+      closeFileTab: (path) => set((state) => {
+        const idx = state.openFiles.findIndex((t) => t.path === path);
+        if (idx === -1) return state;
+        const nextFiles = state.openFiles.filter((t) => t.path !== path);
+        let nextActive = state.activeFilePath;
+        if (state.activeFilePath === path) {
+          // Move focus to the next tab in order, or the previous if we closed the last.
+          if (nextFiles.length === 0) {
+            nextActive = null;
+          } else {
+            const fallbackIdx = Math.min(idx, nextFiles.length - 1);
+            nextActive = nextFiles[fallbackIdx].path;
+          }
+        }
+        return { openFiles: nextFiles, activeFilePath: nextActive };
+      }),
+
+      saveFileTab: async (path) => {
+        const tab = useAppStore.getState().openFiles.find((t) => t.path === path);
+        if (!tab || tab.saving) return;
+        set((state) => ({
+          openFiles: state.openFiles.map((t) =>
+            t.path === path ? { ...t, saving: true } : t
+          ),
+        }));
+        try {
+          await invoke('write_text_file', { path, content: tab.content });
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, saving: false, original: tab.content, error: null } : t
+            ),
+            // Refresh the git changes panel so new saves show up.
+            changesRefreshTrigger: state.changesRefreshTrigger + 1,
+          }));
+        } catch (err) {
+          const message = typeof err === 'string' ? err : 'Failed to save file';
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, saving: false, error: message } : t
+            ),
+          }));
+          throw err;
+        }
+      },
+
+      reloadFileTab: async (path) => {
+        set((state) => ({
+          openFiles: state.openFiles.map((t) =>
+            t.path === path ? { ...t, loading: true, error: null } : t
+          ),
+        }));
+        try {
+          const text = await invoke<string>('read_text_file', { path });
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, content: text, original: text, loading: false, error: null } : t
+            ),
+          }));
+        } catch (err) {
+          const message = typeof err === 'string' ? err : 'Failed to read file';
+          set((state) => ({
+            openFiles: state.openFiles.map((t) =>
+              t.path === path ? { ...t, loading: false, error: message } : t
+            ),
+          }));
+        }
+      },
 
       // Grid actions
       toggleGridMode: () => set((state) => ({ gridMode: !state.gridMode })),
@@ -365,6 +596,8 @@ export const useAppStore = create<AppState>()(
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
         showGitPanel: state.showGitPanel,
+        showFileTree: state.showFileTree,
+        explorerHeightRatio: state.explorerHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
       }),
