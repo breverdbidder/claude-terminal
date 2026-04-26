@@ -12,6 +12,7 @@ import { SessionInsights } from './SessionInsights';
 import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
+import { BottomTerminalPane } from './BottomTerminalPane';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 
 function fileBasename(p: string): string {
@@ -36,9 +37,14 @@ export function TerminalTabs() {
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
-  // Script-child terminals are rendered below their parent — never as their own tab.
+  // Script-child terminals are rendered below their parent and bottom-pane
+  // shells are rendered in BottomTerminalPane — neither belongs in the main
+  // tab bar.
   const terminalList = useMemo(
-    () => Array.from(terminals.values()).filter((t) => !t.scriptParentId).map((t) => t.config),
+    () =>
+      Array.from(terminals.values())
+        .filter((t) => !t.scriptParentId && !t.isShellTerminal)
+        .map((t) => t.config),
     [terminals]
   );
 
@@ -529,6 +535,8 @@ export function TerminalTabs() {
             </div>
         )}
       </div>
+
+      <BottomTerminalPane />
     </div>
   );
 }

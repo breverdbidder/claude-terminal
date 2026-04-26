@@ -132,13 +132,21 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Auto-focus so keyboard input works immediately without requiring a click
     terminal.focus();
 
-    // Re-focus xterm if its textarea loses focus to nothing (body/canvas),
-    // which happens in WebView2 after PTY output triggers React re-renders
-    // or when clicking the terminal canvas directly.
+    // Re-focus xterm if its textarea loses focus to nothing (body) or to its
+    // OWN canvas — that combo happens in WebView2 after PTY output triggers
+    // React re-renders or when the user clicks the terminal canvas directly.
+    // We must NOT refocus if focus moved to a sibling terminal's canvas (e.g.
+    // the script-child pane), or to any input/textarea elsewhere — otherwise
+    // the user can't type into the other terminal.
+    const container = containerRef.current;
     const handleBlur = () => {
       requestAnimationFrame(() => {
         const focused = document.activeElement;
-        if (!focused || focused === document.body || focused.tagName === 'CANVAS') {
+        if (!focused || focused === document.body) {
+          terminal.focus();
+          return;
+        }
+        if (focused.tagName === 'CANVAS' && container && container.contains(focused)) {
           terminal.focus();
         }
       });
@@ -149,8 +157,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
 
-      // Ctrl+Shift+F: Toggle search
-      if (isCtrl && e.shiftKey && e.key === 'F' && e.type === 'keydown') {
+      // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
+      // global file/content search — see useKeyboardShortcuts).
+      if (isCtrl && !e.shiftKey && e.key === 'f' && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
         return false;

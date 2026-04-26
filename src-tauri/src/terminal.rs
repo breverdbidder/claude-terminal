@@ -368,6 +368,114 @@ impl TerminalManager {
         Ok(config)
     }
 
+    /// Spawn an interactive shell at `working_directory`. No `claude`, no
+    /// `npm run` — just a plain shell the user can drive (run scripts, hit
+    /// Ctrl+C to stop them, etc.). Reuses the same PTY/reader plumbing so
+    /// `write_to_terminal` and `terminal-output` events Just Work.
+    pub fn create_shell_terminal(
+        &mut self,
+        label: String,
+        working_directory: String,
+        tx: mpsc::Sender<(String, Vec<u8>)>,
+    ) -> Result<TerminalConfig, String> {
+        let pty_system = native_pty_system();
+        let pty_pair = pty_system
+            .openpty(PtySize {
+                rows: 30,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to open pty: {}", e))?;
+
+        #[cfg(target_os = "windows")]
+        let cmd = {
+            // ComSpec is whatever the user has set as their shell — typically
+            // cmd.exe but could be PowerShell. Without /C the shell stays
+            // interactive.
+            let exe = std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string());
+            CommandBuilder::new(exe)
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let cmd = {
+            const VALID_SHELLS: &[&str] = &[
+                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
+                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
+                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
+                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+            ];
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
+            let mut c = CommandBuilder::new(&shell);
+            // Login + interactive so the user gets their normal prompt.
+            c.arg("-li");
+            c
+        };
+
+        let mut cmd = cmd;
+        if !working_directory.is_empty() {
+            cmd.cwd(&working_directory);
+        }
+
+        let _child = pty_pair.slave.spawn_command(cmd)
+            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+
+        let id = Uuid::new_v4().to_string();
+        let config = TerminalConfig {
+            id: id.clone(),
+            label,
+            nickname: None,
+            profile_id: None,
+            working_directory,
+            // Tag this terminal so persistence/restore can recognise it as a
+            // plain shell — same trick create_script_terminal uses.
+            claude_args: vec!["__shell__".into()],
+            env_vars: HashMap::new(),
+            created_at: Utc::now(),
+            status: TerminalStatus::Running,
+            color_tag: None,
+        };
+
+        let mut reader = pty_pair.master.try_clone_reader()
+            .map_err(|e| format!("Failed to clone reader: {}", e))?;
+        let writer = pty_pair.master.take_writer()
+            .map_err(|e| format!("Failed to take writer: {}", e))?;
+
+        let terminal_id = id.clone();
+        let reader_handle = std::thread::spawn(move || {
+            let mut buf = [0u8; 32 * 1024];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let data = buf[..n].to_vec();
+                        if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
+                    }
+                    Err(e) => {
+                        let _ = tx.blocking_send((
+                            terminal_id.clone(),
+                            format!("\r\n[Error: {}]\r\n", e).into_bytes(),
+                        ));
+                        break;
+                    }
+                }
+            }
+        });
+
+        self.terminals.insert(
+            id.clone(),
+            Terminal {
+                config: config.clone(),
+                pty_pair,
+                writer,
+                reader_handle: Some(reader_handle),
+            },
+        );
+
+        Ok(config)
+    }
+
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal

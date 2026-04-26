@@ -70,8 +70,10 @@ export function Sidebar() {
 
   const terminalList = useMemo(() =>
     Array.from(terminals.values())
-      // Script children belong under their parent in the main area, not the sidebar.
-      .filter(t => !t.scriptParentId)
+      // Script children belong under their parent in the main area, and
+      // bottom-pane shells belong in the BottomTerminalPane — neither
+      // appears in the sidebar.
+      .filter(t => !t.scriptParentId && !t.isShellTerminal)
       .map(t => t.config)
       .filter(t => {
         const searchLower = search.toLowerCase();
