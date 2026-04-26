@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
-import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -68,6 +68,8 @@ export function FileChangesPanel() {
   const openWorktreeModal = useAppStore((s) => s.openWorktreeModal);
   const showGitPanel = useAppStore((s) => s.showGitPanel);
   const setPinnedRepoPath = useAppStore((s) => s.setPinnedRepoPath);
+  const repositoriesHeightRatio = useAppStore((s) => s.repositoriesHeightRatio);
+  const setRepositoriesHeightRatio = useAppStore((s) => s.setRepositoriesHeightRatio);
   const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
   const activeCwd = useMemo(() => {
     if (!activeTerminalId) return null;
@@ -101,6 +103,7 @@ export function FileChangesPanel() {
   const [commitMessage, setCommitMessage] = useState('');
   const [committing, setCommitting] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [pullingTop, setPullingTop] = useState(false);
   const [stashing, setStashing] = useState(false);
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [stashesExpanded, setStashesExpanded] = useState(false);
@@ -231,6 +234,56 @@ export function FileChangesPanel() {
     }
   }, [activePath, triggerChangesRefreshAction]);
 
+  // Quick pull — pull from upstream (or origin/<current-branch>) into the
+  // currently targeted repo's branch. Mirrors VS Code's "Pull" button.
+  const handleQuickPull = useCallback(async () => {
+    if (!activePath || !result?.is_git_repo) return;
+    setPullingTop(true);
+    try {
+      const upstream = await invoke<string | null>('get_upstream_branch', { path: activePath });
+      let remote: string | null = null;
+      let branch: string | null = null;
+      if (upstream) {
+        const idx = upstream.indexOf('/');
+        if (idx > 0 && idx < upstream.length - 1) {
+          remote = upstream.slice(0, idx);
+          branch = upstream.slice(idx + 1);
+        }
+      }
+      if (!remote || !branch) {
+        // Fallback: check for origin/<current-branch>
+        const refs = await invoke<string[]>('get_repo_remote_refs', { path: activePath });
+        const fallback = result.branch ? `origin/${result.branch}` : null;
+        if (fallback && refs.includes(fallback)) {
+          remote = 'origin';
+          branch = result.branch!;
+        } else {
+          toast.error(
+            'Pull',
+            'No upstream branch set. Use the branch menu in the Repositories list to pick a remote branch.',
+          );
+          return;
+        }
+      }
+      const msg = await invoke<string>('git_pull_branch', {
+        path: activePath,
+        remote,
+        branch,
+        strategy: 'merge',
+      });
+      const firstLine = msg.split('\n').find((l) => l.trim().length > 0) ?? 'Pulled';
+      toast.success(`Pulled from ${remote}/${branch}`, firstLine);
+      if (activeTerminalId && activeCwd && pathsEqual(activeCwd, activePath)) {
+        await useTerminalStore.getState().fetchGitInfo(activeTerminalId);
+      }
+      triggerChangesRefreshAction();
+    } catch (err) {
+      toast.error('Pull failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setPullingTop(false);
+    }
+  }, [activePath, result?.is_git_repo, result?.branch, activeTerminalId, activeCwd, triggerChangesRefreshAction]);
+
   const handleStash = useCallback(async () => {
     if (!activePath) return;
     setStashing(true);
@@ -298,6 +351,43 @@ export function FileChangesPanel() {
   const hasStaged = stagedChanges.length > 0;
   const hasUnstaged = unstagedChanges.length > 0;
 
+  // Splitter between Repositories and Changes — mirrors the Sidebar/Explorer
+  // splitter so the user can give either section more room.
+  const splitStackRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const onSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const el = splitStackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const y = e.clientY - rect.top;
+      setRepositoriesHeightRatio(y / rect.height);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [setRepositoriesHeightRatio]);
+
+  const showResizable = showGitPanel && activeTerminalId && reposExpanded;
+
   return (
     <RepoSelectionContext.Provider value={{ selectedRepoPath, activePath, setSelectedRepoPath }}>
     <div className="h-full bg-bg-secondary border-l border-border flex flex-col">
@@ -305,13 +395,29 @@ export function FileChangesPanel() {
       <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-text-primary text-[13px] font-semibold">File Changes</h3>
-          <button
-            onClick={fetchChanges}
-            disabled={loading || !activeTerminalId}
-            className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors disabled:opacity-40"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleQuickPull}
+              disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              title="Pull from upstream (or origin/<current branch>) into the current branch"
+            >
+              {pullingTop ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <GitPullRequestArrow size={12} strokeWidth={2} />
+              )}
+              <span>Pull</span>
+            </button>
+            <button
+              onClick={fetchChanges}
+              disabled={loading || !activeTerminalId}
+              className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
         {result?.branch && (
           <div className="flex items-center gap-1.5 text-text-secondary">
@@ -356,149 +462,177 @@ export function FileChangesPanel() {
         )}
       </div>
 
-      {/* Repositories section — root repo + worktree + nested sub-repos */}
-      {showGitPanel && activeTerminalId && (
-        <div className="border-b border-border">
-          <div className="flex items-center justify-between h-[26px] px-3">
-            <button
-              onClick={() => setReposExpanded((v) => !v)}
-              className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors flex-1 min-w-0 text-left"
-            >
-              {reposExpanded ? (
-                <ChevronDown size={12} strokeWidth={1.75} className="flex-shrink-0" />
-              ) : (
-                <ChevronRight size={12} strokeWidth={1.75} className="flex-shrink-0" />
-              )}
-              <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] flex-shrink-0">
-                Repositories
-              </span>
-              <span className="text-text-tertiary text-[11px]">
-                {repos.length > 0 ? `(${repos.length})` : reposLoading ? '…' : ''}
-              </span>
-            </button>
-            <button
-              onClick={() => activeCwd && fetchRepos(activeCwd)}
-              className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
-                reposLoading ? 'animate-spin' : ''
-              }`}
-              title="Rescan"
-            >
-              <RefreshCw size={11} strokeWidth={1.75} />
-            </button>
+      {/* Resizable stack: Repositories (top) ⇕ Changes (bottom) */}
+      <div ref={splitStackRef} className="flex-1 min-h-0 flex flex-col">
+        {/* Repositories section — root repo + worktree + nested sub-repos */}
+        {showGitPanel && activeTerminalId && (
+          <div
+            className="border-b border-border flex flex-col min-h-0"
+            style={
+              showResizable
+                ? { flex: `${repositoriesHeightRatio} 1 0` }
+                : undefined
+            }
+          >
+            <div className="flex items-center justify-between h-[26px] px-3 flex-shrink-0">
+              <button
+                onClick={() => setReposExpanded((v) => !v)}
+                className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors flex-1 min-w-0 text-left"
+              >
+                {reposExpanded ? (
+                  <ChevronDown size={12} strokeWidth={1.75} className="flex-shrink-0" />
+                ) : (
+                  <ChevronRight size={12} strokeWidth={1.75} className="flex-shrink-0" />
+                )}
+                <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] flex-shrink-0">
+                  Repositories
+                </span>
+                <span className="text-text-tertiary text-[11px]">
+                  {repos.length > 0 ? `(${repos.length})` : reposLoading ? '…' : ''}
+                </span>
+              </button>
+              <button
+                onClick={() => activeCwd && fetchRepos(activeCwd)}
+                className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
+                  reposLoading ? 'animate-spin' : ''
+                }`}
+                title="Rescan"
+              >
+                <RefreshCw size={11} strokeWidth={1.75} />
+              </button>
+            </div>
+            {reposExpanded && (
+              <div className="px-2 pb-2 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
+                {!reposLoading && repos.length === 0 && (
+                  <div className="text-text-tertiary text-[11px] px-2 py-1">
+                    No Git repositories detected
+                  </div>
+                )}
+                {repos.filter((r) => r.is_main_repo).map((r) => (
+                  <RepoRow key={r.path} repo={r} />
+                ))}
+
+
+                {linkedWorktrees.length > 0 && (
+                  <div className="text-text-tertiary text-[10px] uppercase tracking-wide px-2 pt-1.5">
+                    Worktrees ({linkedWorktrees.length})
+                  </div>
+                )}
+                {linkedWorktrees.map((wt) => (
+                  <WorktreeRow
+                    key={wt.path}
+                    wt={wt}
+                    isActive={activeCwd != null && pathsEqual(activeCwd, wt.path)}
+                  />
+                ))}
+
+                {repos.some((r) => !r.is_main_repo) && (
+                  <div className="text-text-tertiary text-[10px] uppercase tracking-wide px-2 pt-1.5">
+                    Nested ({repos.filter((r) => !r.is_main_repo).length})
+                  </div>
+                )}
+                {repos.filter((r) => !r.is_main_repo).map((r) => (
+                  <RepoRow key={r.path} repo={r} />
+                ))}
+              </div>
+            )}
           </div>
-          {reposExpanded && (
-            <div className="px-2 pb-2 space-y-0.5">
-              {!reposLoading && repos.length === 0 && (
-                <div className="text-text-tertiary text-[11px] px-2 py-1">
-                  No Git repositories detected
-                </div>
-              )}
-              {repos.filter((r) => r.is_main_repo).map((r) => (
-                <RepoRow key={r.path} repo={r} />
-              ))}
+        )}
 
+        {/* Drag handle — only meaningful when both sections share the column */}
+        {showResizable && (
+          <div
+            onMouseDown={onSplitterMouseDown}
+            role="separator"
+            aria-orientation="horizontal"
+            title="Drag to resize Repositories / Changes"
+            className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-accent-primary/50 active:bg-accent-primary/70 transition-colors"
+          />
+        )}
 
-              {linkedWorktrees.length > 0 && (
-                <div className="text-text-tertiary text-[10px] uppercase tracking-wide px-2 pt-1.5">
-                  Worktrees ({linkedWorktrees.length})
-                </div>
-              )}
-              {linkedWorktrees.map((wt) => (
-                <WorktreeRow
-                  key={wt.path}
-                  wt={wt}
-                  isActive={activeCwd != null && pathsEqual(activeCwd, wt.path)}
-                />
-              ))}
-
-              {repos.some((r) => !r.is_main_repo) && (
-                <div className="text-text-tertiary text-[10px] uppercase tracking-wide px-2 pt-1.5">
-                  Nested ({repos.filter((r) => !r.is_main_repo).length})
-                </div>
-              )}
-              {repos.filter((r) => !r.is_main_repo).map((r) => (
-                <RepoRow key={r.path} repo={r} />
-              ))}
+        {/* Content */}
+        <div
+          className="overflow-y-auto p-1.5 min-h-0"
+          style={
+            showResizable
+              ? { flex: `${1 - repositoriesHeightRatio} 1 0` }
+              : { flex: '1 1 0' }
+          }
+        >
+          {!activeTerminalId && (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-text-tertiary text-[12px]">No terminal selected</p>
             </div>
           )}
+
+          {activeTerminalId && error && (
+            <div className="p-3">
+              <p className="text-red-400 text-[12px]">{error}</p>
+            </div>
+          )}
+
+          {activeTerminalId && result && !result.is_git_repo && (
+            <div className="flex items-center justify-center h-full px-4 text-center">
+              <p className="text-text-tertiary text-[12px]">
+                Not a git repository.
+                {repos.length > 0 && (
+                  <>
+                    <br />
+                    Pin a nested repository above to commit, push, and manage it here.
+                  </>
+                )}
+              </p>
+            </div>
+          )}
+
+          {activeTerminalId && result && result.is_git_repo && result.changes.length === 0 && !result.error && (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-text-tertiary text-[12px]">No uncommitted changes</p>
+            </div>
+          )}
+
+          {activeTerminalId && result?.error && (
+            <div className="p-3">
+              <p className="text-red-400 text-[12px]">{result.error}</p>
+            </div>
+          )}
+
+          {hasStaged && (
+            <ChangeGroup
+              title="Staged"
+              count={stagedChanges.length}
+              files={stagedChanges}
+              staged={true}
+              expandedFile={expandedFile}
+              setExpandedFile={setExpandedFile}
+              activeTerminalId={activeTerminalId}
+              pathOverride={usingSelectedRepo ? selectedRepoPath : null}
+              repoRoot={activePath}
+              stagingPaths={stagingPaths}
+              onStage={stageFiles}
+              onUnstage={unstageFiles}
+              onBulk={() => unstageFiles(stagedChanges.map((f) => f.path))}
+            />
+          )}
+
+          {hasUnstaged && (
+            <ChangeGroup
+              title="Changes"
+              count={unstagedChanges.length}
+              files={unstagedChanges}
+              staged={false}
+              expandedFile={expandedFile}
+              setExpandedFile={setExpandedFile}
+              activeTerminalId={activeTerminalId}
+              pathOverride={usingSelectedRepo ? selectedRepoPath : null}
+              repoRoot={activePath}
+              stagingPaths={stagingPaths}
+              onStage={stageFiles}
+              onUnstage={unstageFiles}
+              onBulk={() => stageFiles(unstagedChanges.map((f) => f.path))}
+            />
+          )}
         </div>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-1.5">
-        {!activeTerminalId && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-text-tertiary text-[12px]">No terminal selected</p>
-          </div>
-        )}
-
-        {activeTerminalId && error && (
-          <div className="p-3">
-            <p className="text-red-400 text-[12px]">{error}</p>
-          </div>
-        )}
-
-        {activeTerminalId && result && !result.is_git_repo && (
-          <div className="flex items-center justify-center h-full px-4 text-center">
-            <p className="text-text-tertiary text-[12px]">
-              Not a git repository.
-              {repos.length > 0 && (
-                <>
-                  <br />
-                  Pin a nested repository above to commit, push, and manage it here.
-                </>
-              )}
-            </p>
-          </div>
-        )}
-
-        {activeTerminalId && result && result.is_git_repo && result.changes.length === 0 && !result.error && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-text-tertiary text-[12px]">No uncommitted changes</p>
-          </div>
-        )}
-
-        {activeTerminalId && result?.error && (
-          <div className="p-3">
-            <p className="text-red-400 text-[12px]">{result.error}</p>
-          </div>
-        )}
-
-        {hasStaged && (
-          <ChangeGroup
-            title="Staged"
-            count={stagedChanges.length}
-            files={stagedChanges}
-            staged={true}
-            expandedFile={expandedFile}
-            setExpandedFile={setExpandedFile}
-            activeTerminalId={activeTerminalId}
-            pathOverride={usingSelectedRepo ? selectedRepoPath : null}
-            repoRoot={activePath}
-            stagingPaths={stagingPaths}
-            onStage={stageFiles}
-            onUnstage={unstageFiles}
-            onBulk={() => unstageFiles(stagedChanges.map((f) => f.path))}
-          />
-        )}
-
-        {hasUnstaged && (
-          <ChangeGroup
-            title="Changes"
-            count={unstagedChanges.length}
-            files={unstagedChanges}
-            staged={false}
-            expandedFile={expandedFile}
-            setExpandedFile={setExpandedFile}
-            activeTerminalId={activeTerminalId}
-            pathOverride={usingSelectedRepo ? selectedRepoPath : null}
-            repoRoot={activePath}
-            stagingPaths={stagingPaths}
-            onStage={stageFiles}
-            onUnstage={unstageFiles}
-            onBulk={() => stageFiles(unstagedChanges.map((f) => f.path))}
-          />
-        )}
       </div>
 
       {/* Stashes — collapsible list, only when there are stashes */}
@@ -1047,6 +1181,23 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
     setSelectedRepoPath(isPinned ? null : repo.path);
   };
 
+  const [openingTerminal, setOpeningTerminal] = useState(false);
+  const openTerminalHere = useCallback(async () => {
+    if (openingTerminal) return;
+    setOpeningTerminal(true);
+    try {
+      const baseLabel = repo.is_main_repo
+        ? (repo.path.replace(/^.*[\\/]/, '') || 'repo')
+        : (repo.relative_path || repo.path.replace(/^.*[\\/]/, ''));
+      await useTerminalStore.getState().openShellTerminal(baseLabel, repo.path);
+      toast.success('Shell opened', `${baseLabel} — ${repo.path}`);
+    } catch (err) {
+      toast.error('Open terminal failed', typeof err === 'string' ? err : 'Unknown error');
+    } finally {
+      setOpeningTerminal(false);
+    }
+  }, [openingTerminal, repo.path, repo.relative_path, repo.is_main_repo]);
+
   return (
     <div
       className={`group relative rounded-[3px] ${
@@ -1092,6 +1243,21 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
               {repo.is_worktree ? ' · worktree' : ''}
             </div>
           </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={openTerminalHere}
+          disabled={openingTerminal}
+          className="flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors text-text-tertiary hover:bg-accent-primary/15 hover:text-accent-primary disabled:opacity-40"
+          title={`Open shell here\nLaunches a plain interactive shell (no Claude) at\n${repo.path}\nin the bottom terminal pane.`}
+          aria-label={`Open shell in ${repo.path}`}
+        >
+          {openingTerminal ? (
+            <Loader2 size={11} className="animate-spin" />
+          ) : (
+            <TerminalSquare size={11} strokeWidth={1.75} />
+          )}
         </button>
 
         <button

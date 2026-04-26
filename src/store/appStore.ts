@@ -55,6 +55,12 @@ interface AppState {
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
 
+  // File Changes panel split: Repositories (top) vs Changes (bottom)
+  repositoriesHeightRatio: number; // 0.15..0.85
+
+  // Global Search (Ctrl+Shift+F)
+  globalSearchOpen: boolean;
+
   // Grid state
   gridMode: boolean;
   gridTerminalIds: string[];
@@ -129,6 +135,12 @@ interface AppState {
   saveFileTab: (path: string) => Promise<void>;
   reloadFileTab: (path: string) => Promise<void>;
   setExplorerHeightRatio: (ratio: number) => void;
+  setRepositoriesHeightRatio: (ratio: number) => void;
+
+  // Global Search actions (Ctrl+Shift+F)
+  openGlobalSearch: () => void;
+  closeGlobalSearch: () => void;
+  toggleGlobalSearch: () => void;
 
   // Grid actions
   toggleGridMode: () => void;
@@ -248,6 +260,12 @@ export const useAppStore = create<AppState>()(
       // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
       explorerHeightRatio: 0.45,
 
+      // File Changes split (default: repositories takes 35% of available column)
+      repositoriesHeightRatio: 0.35,
+
+      // Global Search (Ctrl+Shift+F)
+      globalSearchOpen: false,
+
       // Grid state
       gridMode: false,
       gridTerminalIds: [],
@@ -315,6 +333,13 @@ export const useAppStore = create<AppState>()(
       setExplorerHeightRatio: (ratio) => set({
         explorerHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
+      setRepositoriesHeightRatio: (ratio) => set({
+        repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
+      }),
+
+      openGlobalSearch: () => set({ globalSearchOpen: true }),
+      closeGlobalSearch: () => set({ globalSearchOpen: false }),
+      toggleGlobalSearch: () => set((state) => ({ globalSearchOpen: !state.globalSearchOpen })),
 
       setActiveFilePath: (path) => set({ activeFilePath: path }),
 
@@ -598,6 +623,7 @@ export const useAppStore = create<AppState>()(
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
         explorerHeightRatio: state.explorerHeightRatio,
+        repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
       }),

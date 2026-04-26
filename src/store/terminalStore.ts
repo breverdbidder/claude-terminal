@@ -34,6 +34,9 @@ interface TerminalInstance {
   // spawned below a parent terminal. Excluded from the tab list and sidebar.
   scriptName?: string;
   scriptParentId?: string;
+  // Plain interactive shell at a directory (no claude). Renders in the bottom
+  // BottomTerminalPane, not the main tab bar / sidebar.
+  isShellTerminal?: boolean;
 }
 
 interface TerminalState {
@@ -43,6 +46,9 @@ interface TerminalState {
   gitInfoCache: Map<string, WorktreeDetectResult>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
+  // Bottom pane (interactive shells the user opens from the Repositories list).
+  bottomTerminalIds: string[];
+  activeBottomTerminalId: string | null;
 
   createTerminal: (
     label: string,
@@ -77,6 +83,11 @@ interface TerminalState {
   // by the package.json CodeLens, where the script's cwd is the file's folder.
   runScript: (parentId: string, scriptName: string, cwdOverride?: string) => Promise<string>;
   closeScript: (parentId: string) => Promise<void>;
+
+  // Bottom shell-terminal pane
+  openShellTerminal: (label: string, cwd: string) => Promise<string>;
+  closeShellTerminal: (id: string) => Promise<void>;
+  setActiveBottomTerminal: (id: string | null) => void;
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -85,6 +96,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   unreadTerminalIds: new Set(),
   gitInfoCache: new Map(),
   scriptChildren: new Map(),
+  bottomTerminalIds: [],
+  activeBottomTerminalId: null,
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
@@ -164,10 +177,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newChildren = new Map(state.scriptChildren);
       newChildren.delete(id);
 
-      // Only pick a fallback from non-child terminals; script children must
-      // never become the "active tab".
+      // Only pick a fallback from terminals that actually appear in the main
+      // tab bar — script children and bottom-pane shells must never become
+      // the "active tab".
       const remainingIds = Array.from(newTerminals.values())
-        .filter((t) => !t.scriptParentId)
+        .filter((t) => !t.scriptParentId && !t.isShellTerminal)
         .map((t) => t.config.id);
       return {
         terminals: newTerminals,
@@ -397,4 +411,55 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return { terminals: nextTerminals, scriptChildren: nextChildren };
     });
   },
+
+  openShellTerminal: async (label, cwd) => {
+    const config = await invoke<TerminalConfig>('create_shell_terminal', { label, cwd });
+    set((state) => {
+      const nextTerminals = new Map(state.terminals);
+      nextTerminals.set(config.id, {
+        config,
+        xterm: null,
+        isWorktree: false,
+        isShellTerminal: true,
+      });
+      return {
+        terminals: nextTerminals,
+        bottomTerminalIds: [...state.bottomTerminalIds, config.id],
+        activeBottomTerminalId: config.id,
+      };
+    });
+    return config.id;
+  },
+
+  closeShellTerminal: async (id) => {
+    try {
+      await invoke('close_terminal', { id });
+    } catch {
+      // Already gone — fall through to store cleanup.
+    }
+    set((state) => {
+      const nextTerminals = new Map(state.terminals);
+      const inst = nextTerminals.get(id);
+      if (inst?.xterm) inst.xterm.dispose();
+      nextTerminals.delete(id);
+      const nextIds = state.bottomTerminalIds.filter((x) => x !== id);
+      let nextActive: string | null = state.activeBottomTerminalId;
+      if (nextActive === id) {
+        const removedIdx = state.bottomTerminalIds.indexOf(id);
+        if (nextIds.length === 0) {
+          nextActive = null;
+        } else {
+          const fallbackIdx = Math.min(Math.max(removedIdx, 0), nextIds.length - 1);
+          nextActive = nextIds[fallbackIdx];
+        }
+      }
+      return {
+        terminals: nextTerminals,
+        bottomTerminalIds: nextIds,
+        activeBottomTerminalId: nextActive,
+      };
+    });
+  },
+
+  setActiveBottomTerminal: (id) => set({ activeBottomTerminalId: id }),
 }));

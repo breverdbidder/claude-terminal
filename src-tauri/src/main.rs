@@ -119,6 +119,8 @@ fn main() {
             commands::get_git_head_content,
             commands::list_package_scripts,
             commands::create_script_terminal,
+            commands::create_shell_terminal,
+            commands::search_in_files,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

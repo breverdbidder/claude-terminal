@@ -64,7 +64,11 @@ export function useKeyboardShortcuts() {
         }
       }
 
-      // Ctrl+Shift+F is handled inside TerminalView for search
+      // Global file/content search (VS Code style): Ctrl+Shift+F
+      if (ctrl && shift && e.key === 'F') {
+        e.preventDefault();
+        useAppStore.getState().toggleGlobalSearch();
+      }
 
       if (ctrl && e.key === 'b') {
         e.preventDefault();
