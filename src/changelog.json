@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.20.6",
+    "date": "2026-04-28",
+    "features": [
+      { "title": "Maintenance release", "description": "Hardened the analytics heartbeat path with token authentication and per-installation rate limiting. No user-visible UI changes." }
+    ]
+  },
+  {
     "version": "1.20.5",
     "date": "2026-04-26",
     "features": [
