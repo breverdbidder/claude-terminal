@@ -104,6 +104,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          CT_INGEST_TOKEN: ${{ secrets.CT_INGEST_TOKEN }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           updaterJsonKeepUniversal: true

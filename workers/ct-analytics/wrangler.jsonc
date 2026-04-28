@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ct-analytics",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-04",
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV_BINDING",
+      "id": "8d7e4237d2284ed6b9ecbab1bdebe9a3"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ct-analytics-db",
+      "database_id": "cedefc3c-2992-48aa-98b2-b8380670db92"
+    }
+  ]
+}
