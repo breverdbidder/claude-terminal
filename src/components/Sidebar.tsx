@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight, UserCog } from 'lucide-react';
+import { Plus, Search, MoreVertical, Copy, Trash2, Edit3, Tag, Grid3X3, FolderOpen, Clock, FileText, Settings, GitBranch, GitFork, Brain, GripVertical, ChevronsLeft, ChevronsRight, UserCog, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
@@ -28,7 +28,7 @@ export function Sidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds, gitInfoCache } = useTerminalStore();
-  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode, showFileTree, explorerHeightRatio, setExplorerHeightRatio } = useAppStore();
+  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode, showFileTree, explorerHeightRatio, setExplorerHeightRatio, toolsCollapsed, toggleToolsCollapsed } = useAppStore();
 
   // Splitter between terminal list and Explorer. Measures the stack's bounding
   // rect during drag so the ratio is always computed relative to the sidebar's
@@ -459,57 +459,75 @@ export function Sidebar() {
       )}
       </div>
 
-      {/* Footer — tool links */}
-      <div className="p-1.5 border-t border-[var(--ij-divider-soft)] space-y-px">
+      {/* Footer — collapsible tool links so the Explorer above can claim
+          the freed vertical space when collapsed (the default). */}
+      <div className="border-t border-[var(--ij-divider-soft)] flex-shrink-0">
         <button
-          onClick={() => openWorkspaceModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+          onClick={toggleToolsCollapsed}
+          aria-expanded={!toolsCollapsed}
+          className="w-full flex items-center gap-1.5 h-[26px] px-3 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] transition-colors"
+          title={toolsCollapsed ? 'Show tools' : 'Hide tools'}
         >
-          <FolderOpen size={13} />
-          Workspaces
+          {toolsCollapsed ? (
+            <ChevronRight size={11} className="text-text-tertiary" strokeWidth={2} />
+          ) : (
+            <ChevronDown size={11} className="text-text-tertiary" strokeWidth={2} />
+          )}
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em]">Tools</span>
         </button>
-        <button
-          onClick={() => openSessionHistory()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <Clock size={13} />
-          Session History
-        </button>
-        <button
-          onClick={() => openSnippetsModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <FileText size={13} />
-          Snippets
-        </button>
-        <button
-          onClick={() => openSessionTimeline()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <Clock size={13} />
-          Session Timeline
-        </button>
-        <button
-          onClick={() => openClaudeConfig()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <Settings size={13} />
-          Claude Config
-        </button>
-        <button
-          onClick={() => openMemoryEditor()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <Brain size={13} />
-          Memory Editor
-        </button>
-        <button
-          onClick={() => openProfileModal()}
-          className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
-        >
-          <UserCog size={13} />
-          Manage Profiles
-        </button>
+        {!toolsCollapsed && (
+          <div className="p-1.5 pt-0 space-y-px">
+            <button
+              onClick={() => openWorkspaceModal()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <FolderOpen size={13} />
+              Workspaces
+            </button>
+            <button
+              onClick={() => openSessionHistory()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <Clock size={13} />
+              Session History
+            </button>
+            <button
+              onClick={() => openSnippetsModal()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <FileText size={13} />
+              Snippets
+            </button>
+            <button
+              onClick={() => openSessionTimeline()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <Clock size={13} />
+              Session Timeline
+            </button>
+            <button
+              onClick={() => openClaudeConfig()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <Settings size={13} />
+              Claude Config
+            </button>
+            <button
+              onClick={() => openMemoryEditor()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <Brain size={13} />
+              Memory Editor
+            </button>
+            <button
+              onClick={() => openProfileModal()}
+              className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
+            >
+              <UserCog size={13} />
+              Manage Profiles
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, File as FileIcon, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { getFileIconUrl, getFolderIconUrl } from '../utils/fileIcons';
 
 interface DirEntryInfo {
   name: string;
@@ -233,11 +234,13 @@ function TreeRow({ node, depth, onToggle, onOpenFile }: TreeRowProps) {
           ) : (
             <ChevronRight size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
           )}
-          {node.expanded ? (
-            <FolderOpen size={13} className="text-accent-primary shrink-0" strokeWidth={1.75} />
-          ) : (
-            <Folder size={13} className="text-accent-primary shrink-0" strokeWidth={1.75} />
-          )}
+          <img
+            src={getFolderIconUrl(entry.name, node.expanded)}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="w-[14px] h-[14px] shrink-0 select-none"
+          />
           <span className="text-[12px] text-text-primary truncate" title={entry.name}>
             {entry.name}
           </span>
@@ -273,7 +276,13 @@ function TreeRow({ node, depth, onToggle, onOpenFile }: TreeRowProps) {
       onClick={() => onOpenFile(entry.path)}
       title={entry.path}
     >
-      <FileIcon size={12} className="text-text-tertiary shrink-0" strokeWidth={1.75} />
+      <img
+        src={getFileIconUrl(entry.name)}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="w-[14px] h-[14px] shrink-0 select-none"
+      />
       <span className="text-[12px] text-text-secondary truncate">{entry.name}</span>
     </div>
   );

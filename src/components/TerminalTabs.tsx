@@ -7,7 +7,6 @@ import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
-import { TeleportActions } from './TeleportActions';
 import { SessionInsights } from './SessionInsights';
 import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
@@ -212,7 +211,6 @@ export function TerminalTabs() {
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
               const loopInfo = instance?.loopInfo;
-              const isRunning = terminal.status === 'Running';
 
               return (
               <Reorder.Item
@@ -277,9 +275,6 @@ export function TerminalTabs() {
                     }`}>
                       {gitInfoCache.get(terminal.id)?.current_branch}
                     </span>
-                  )}
-                  {isRunning && (
-                    <TeleportActions terminalId={terminal.id} />
                   )}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     {activeTerminalId && terminal.id !== activeTerminalId && (

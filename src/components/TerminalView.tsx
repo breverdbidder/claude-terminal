@@ -91,9 +91,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       cursorStyle: 'bar',
       cursorWidth: 2,
       allowProposedApi: true,
-      // 5000 lines is ample for reading claude output and caps per-terminal
-      // memory — at 8 terminals * default 1000 we'd be underprovisioned.
-      scrollback: 5000,
+      // Large scrollback so long Claude sessions stay fully scrollable, like
+      // a regular CMD/PowerShell window. ~100 bytes/line ≈ 10MB per terminal
+      // worst case, which is acceptable even with an 8-terminal grid.
+      scrollback: 100000,
     });
 
     const fitAddon = new FitAddon();

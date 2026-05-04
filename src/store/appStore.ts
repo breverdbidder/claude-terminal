@@ -54,6 +54,7 @@ interface AppState {
 
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
+  toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) — collapsed gives Explorer more height
 
   // File Changes panel split: Repositories (top) vs Changes (bottom)
   repositoriesHeightRatio: number; // 0.15..0.85
@@ -136,6 +137,7 @@ interface AppState {
   reloadFileTab: (path: string) => Promise<void>;
   setExplorerHeightRatio: (ratio: number) => void;
   setRepositoriesHeightRatio: (ratio: number) => void;
+  toggleToolsCollapsed: () => void;
 
   // Global Search actions (Ctrl+Shift+F)
   openGlobalSearch: () => void;
@@ -259,6 +261,9 @@ export const useAppStore = create<AppState>()(
 
       // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
       explorerHeightRatio: 0.45,
+      // Tools footer collapsed by default — surfaces more explorer space; user
+      // can expand on demand to reach Workspaces / Snippets / Profiles / etc.
+      toolsCollapsed: true,
 
       // File Changes split (default: repositories takes 35% of available column)
       repositoriesHeightRatio: 0.35,
@@ -336,6 +341,7 @@ export const useAppStore = create<AppState>()(
       setRepositoriesHeightRatio: (ratio) => set({
         repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
+      toggleToolsCollapsed: () => set((state) => ({ toolsCollapsed: !state.toolsCollapsed })),
 
       openGlobalSearch: () => set({ globalSearchOpen: true }),
       closeGlobalSearch: () => set({ globalSearchOpen: false }),
@@ -623,6 +629,7 @@ export const useAppStore = create<AppState>()(
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
         explorerHeightRatio: state.explorerHeightRatio,
+        toolsCollapsed: state.toolsCollapsed,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,

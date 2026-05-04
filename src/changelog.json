@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.20.7",
+    "date": "2026-05-04",
+    "features": [
+      { "title": "Unbounded terminal history", "description": "xterm scrollback raised to 100,000 lines so long Claude sessions stay fully scrollable like a regular CMD/PowerShell window." },
+      { "title": "Material Icon Theme in file panels", "description": "Explorer and File Changes lists now render per-extension and per-filename icons from the Material Icon Theme (TypeScript, Rust, package.json, Dockerfile, folders, etc.) — keeps git-status colors in the changes list." },
+      { "title": "Cleaner terminal tabs", "description": "Removed the Teleport-to-Web and Remote-Control buttons from running tabs to reduce clutter." },
+      { "title": "Collapsible sidebar Tools section", "description": "Footer links (Workspaces, Session History, Snippets, Session Timeline, Claude Config, Memory Editor, Manage Profiles) collapse to a single TOOLS header by default — Explorer claims the freed vertical space. State persists across restarts." }
+    ]
+  },
+  {
     "version": "1.20.6",
     "date": "2026-04-28",
     "features": [

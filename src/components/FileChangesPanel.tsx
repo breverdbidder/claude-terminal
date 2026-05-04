@@ -6,6 +6,13 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { InlineDiffView } from './InlineDiffView';
 import type { WorktreeInfo } from '../types/git';
+import { getFileIconUrl } from '../utils/fileIcons';
+
+function pathBasename(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+}
 
 interface FileChange {
   path: string;
@@ -901,6 +908,13 @@ function ChangeGroup({
               ) : (
                 <ChevronRight size={12} className="text-text-tertiary shrink-0" />
               )}
+              <img
+                src={getFileIconUrl(pathBasename(file.path))}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="w-[14px] h-[14px] shrink-0 select-none"
+              />
               <span className={`${config.color} shrink-0`}>{config.icon}</span>
               <p className={`flex-1 text-[12px] font-mono truncate ${config.color}`} title={file.path}>
                 {file.path}
