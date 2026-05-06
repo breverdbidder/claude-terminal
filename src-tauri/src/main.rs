@@ -5,6 +5,7 @@ mod terminal;
 mod config;
 mod database;
 mod telemetry;
+mod everest_seed;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -25,6 +26,14 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db = database::Database::new()?;
+
+            // Everest step 4: seed default tenant profiles on first launch (no-op if any profile exists).
+            match everest_seed::seed_default_profiles_if_empty(&db) {
+                Ok(0) => {} // profiles already populated; respect user customizations
+                Ok(n) => eprintln!("[everest_seed] seeded {} default tenant profiles", n),
+                Err(e) => eprintln!("[everest_seed] WARN: seed failed: {}", e),
+            }
+
             let terminal_manager = terminal::TerminalManager::new();
 
             app.manage(AppState {

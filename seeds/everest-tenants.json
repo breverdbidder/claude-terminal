@@ -1,0 +1,148 @@
+{
+    "_meta": {
+        "source": "Supabase public.everest_tenants (project mocerqjnksmhcjzxrewo)",
+        "purpose": "First-launch default ClaudeTerminal profiles, one per Everest tenant.",
+        "refresh": "Re-export from Supabase when tenants change. See BASELINE.md for procedure.",
+        "consumer": "src-tauri/src/everest_seed.rs (compile-time embedded via include_str!)",
+        "generated_at": "2026-05-06T16:48:32Z",
+        "generated_by": "Everest pg_net REPOEVAL pipeline (Claude Opus 4.7)"
+    },
+    "tenants": [
+        {
+            "name": "BidDeed.AI",
+            "slug": "biddeed",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "biddeed.ai",
+                "EVEREST_TENANT": "biddeed",
+                "EVEREST_PAIRING_RULE": "ALWAYS pair with ZoneWise.AI (PAIRING RULE)",
+                "EVEREST_BUSINESS_KIND": "saas"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Agentic AI for foreclosure + tax deed auction intelligence. 12-stage Everest Ascent pipeline. Shapira Formula V3.1. · saas · active · ALWAYS pair with ZoneWise.AI (PAIRING RULE)",
+            "working_directory": "%USERPROFILE%\\Code\\biddeed"
+        },
+        {
+            "name": "Brevard Sliding Doors & Windows",
+            "slug": "brevard-doors",
+            "env_vars": {
+                "EVEREST_STAGE": "prelaunch",
+                "EVEREST_DOMAIN": "TBD",
+                "EVEREST_TENANT": "brevard-doors",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "service"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Local sliding door + window repair/maintenance service, Brevard County FL. Modeled on Zackslidingdoor.com CI (chat 6753ca32, Apr 16 2026). Base Y1=$149K / Y3=$552K, 18-23pct rev from referrals, 29-partner directory. · service · prelaunch",
+            "working_directory": "%USERPROFILE%\\Code\\brevard-doors"
+        },
+        {
+            "name": "Everest Capital USA",
+            "slug": "everest-capital",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "everestcapitalusa.com",
+                "EVEREST_TENANT": "everest-capital",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "parent"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Agentic AI ecosystem (NOT SaaS). Parent holding for BidDeed.AI + ZoneWise.AI. Patent V3.1 (12 claims) filed individually by Ariel. · parent · active",
+            "working_directory": "%USERPROFILE%\\Code\\everest-capital"
+        },
+        {
+            "name": "Everest RE Portfolio",
+            "slug": "everest-portfolio",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "TBD",
+                "EVEREST_TENANT": "everest-portfolio",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "portfolio"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Active FL real estate portfolio under Everest Capital USA. Current: 1581/1591 Lakewood Dr NE Palm Bay ($320K closing Apr 20), 625 Ocean St Satellite Beach (RTAP, permit deadline Jun 25 2026), Mims (closed ~Apr 10). More to come. · portfolio · active",
+            "working_directory": "%USERPROFILE%\\Code\\everest-portfolio"
+        },
+        {
+            "name": "Kenstrekt Inc",
+            "slug": "kenstrekt",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "kenstrekt.com",
+                "EVEREST_TENANT": "kenstrekt",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "gc"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Kenstrekt Inc — FL General Contractor. Mariam Shapira qualifier. GC qualifier for Everest Capital USA construction. Light-gauge + MEP-coordination capable. Titusville fire-safety stamped work. · gc · active",
+            "working_directory": "%USERPROFILE%\\Code\\kenstrekt"
+        },
+        {
+            "name": "Property360",
+            "slug": "property360",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "property360re.com",
+                "EVEREST_TENANT": "property360",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "brokerage"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Mariam Shapira FL Real Estate Broker. Exclusive broker for Everest Capital USA transactions. Palm Bay + Satellite Beach + Titusville focus. · brokerage · active",
+            "working_directory": "%USERPROFILE%\\Code\\property360"
+        },
+        {
+            "name": "Protection Partners",
+            "slug": "protection-partners",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "TBD",
+                "EVEREST_TENANT": "protection-partners",
+                "EVEREST_PAIRING_RULE": "",
+                "EVEREST_BUSINESS_KIND": "insurance"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "Mariam Shapira FL Insurance. Property + casualty coverage for FL homeowners + landlords + commercial. · insurance · active",
+            "working_directory": "%USERPROFILE%\\Code\\protection-partners"
+        },
+        {
+            "name": "ZoneWise.AI",
+            "slug": "zonewise",
+            "env_vars": {
+                "EVEREST_STAGE": "active",
+                "EVEREST_DOMAIN": "zonewise.ai",
+                "EVEREST_TENANT": "zonewise",
+                "EVEREST_PAIRING_RULE": "ALWAYS pair with BidDeed.AI (PAIRING RULE)",
+                "EVEREST_BUSINESS_KIND": "saas"
+            },
+            "claude_args": [
+                "--model",
+                "opus"
+            ],
+            "description": "67-county Florida zoning + parcel intelligence. 10.5M+ parcels, 5,950 districts. Free choropleth + paid Dify chat. · saas · active · ALWAYS pair with BidDeed.AI (PAIRING RULE)",
+            "working_directory": "%USERPROFILE%\\Code\\zonewise"
+        }
+    ]
+}
