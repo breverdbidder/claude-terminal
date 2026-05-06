@@ -6,6 +6,7 @@ mod config;
 mod database;
 mod telemetry;
 mod everest_seed;
+mod everest_hints;
 
 use tauri::Manager;
 use std::sync::Arc;

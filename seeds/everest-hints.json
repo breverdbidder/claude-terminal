@@ -1,0 +1,56 @@
+
+{
+  "_meta": {
+    "generated_at": "2026-05-06T16:50:00Z",
+    "generated_by": "Everest pg_net REPOEVAL pipeline (Claude Opus 4.7)",
+    "source": "Hand-curated mapping over union of public.everest_tenants.skill_allowlist (29 distinct slugs at generation). NO dedicated everest_skills table exists in Supabase as of 2026-05-06; the canonical skill list is the union of skill_allowlist arrays across all tenants.",
+    "purpose": "Skill-catalog hints exposed in ClaudeTerminal's F1 panel. Each command references $EVEREST_TENANT and $EVEREST_DOMAIN env vars set by the tenant profile (see seeds/everest-tenants.json).",
+    "refresh": "When skill_allowlist changes in everest_tenants, update the categories below to match. Run cargo build --release to re-embed.",
+    "consumer": "src-tauri/src/everest_hints.rs (compile-time embedded via include_str!)"
+  },
+  "categories": [
+    {"name": "Everest · SEO", "icon": "search", "hints": [
+      {"title": "Programmatic SEO", "command": "Generate programmatic SEO plan for $EVEREST_TENANT on $EVEREST_DOMAIN", "description": "Templated pages keyed to entities"},
+      {"title": "SEO Audit", "command": "Audit on-page SEO for $EVEREST_DOMAIN", "description": "Find gaps in titles, headings, schema, internal links"},
+      {"title": "AI Search Optimization", "command": "Optimize $EVEREST_DOMAIN for AI search and LLM citation", "description": "Structure content for LLM citation"},
+      {"title": "Schema Markup", "command": "Add JSON-LD schema markup for $EVEREST_TENANT", "description": "Structured data for rich results"},
+      {"title": "Site Architecture", "command": "Design site architecture for $EVEREST_TENANT", "description": "Information hierarchy and internal linking"}
+    ]},
+    {"name": "Everest · Conversion", "icon": "target", "hints": [
+      {"title": "Page CRO", "command": "Optimize landing page conversion for $EVEREST_TENANT", "description": "Hero, social proof, CTA, friction"},
+      {"title": "Form CRO", "command": "Optimize form conversion for $EVEREST_TENANT", "description": "Fields, validation, submit copy"},
+      {"title": "Popup CRO", "command": "Design popup with conversion lift for $EVEREST_TENANT", "description": "Trigger timing, copy, dismiss UX"},
+      {"title": "Paywall Upgrade", "command": "Optimize paywall upgrade flow for $EVEREST_TENANT", "description": "Tier framing, urgency, value stack"},
+      {"title": "Signup Flow", "command": "Optimize signup flow for $EVEREST_TENANT", "description": "Step reduction, magic link vs password"},
+      {"title": "Lead Magnet", "command": "Design lead magnet for $EVEREST_TENANT ICP", "description": "Free resource calibrated to ICP pain"},
+      {"title": "Free Tool", "command": "Spec a free tool as TOFU magnet for $EVEREST_TENANT", "description": "Calculator/checker as lead magnet"}
+    ]},
+    {"name": "Everest · Copy & Content", "icon": "pen-tool", "hints": [
+      {"title": "Copywriting", "command": "Write conversion copy for $EVEREST_TENANT", "description": "Hero, benefit, CTA, social proof"},
+      {"title": "Copy Editing", "command": "Edit copy for $EVEREST_TENANT for clarity and conversion", "description": "Tighten, remove jargon, pull quotes"},
+      {"title": "Content Strategy", "command": "Build a 90-day content plan for $EVEREST_TENANT", "description": "Pillars, cadence, distribution channels"},
+      {"title": "Social Content", "command": "Generate week of social content for $EVEREST_TENANT", "description": "Platform-tuned posts with hooks"}
+    ]},
+    {"name": "Everest · Outbound", "icon": "mail", "hints": [
+      {"title": "Cold Email", "command": "Write cold email sequence for $EVEREST_TENANT ICP", "description": "3-step sequence with clear ask"},
+      {"title": "Email Sequence", "command": "Build onboarding email sequence for $EVEREST_TENANT", "description": "Welcome, activation, upgrade"},
+      {"title": "Paid Ads", "command": "Draft paid ad creative and copy for $EVEREST_TENANT", "description": "Hook, body, CTA, target"}
+    ]},
+    {"name": "Everest · Strategy & Research", "icon": "compass", "hints": [
+      {"title": "Launch Strategy", "command": "Plan launch for $EVEREST_TENANT", "description": "Timeline, channels, success metrics"},
+      {"title": "Customer Research", "command": "Run customer research session for $EVEREST_TENANT ICP", "description": "Jobs-to-be-done, friction, language"},
+      {"title": "Competitor Alternatives", "command": "Build alternative-to-competitor pages for $EVEREST_TENANT", "description": "Compare, differentiate, capture intent"},
+      {"title": "Pricing Strategy", "command": "Design pricing strategy for $EVEREST_TENANT", "description": "Tier framing, anchor, willingness-to-pay"},
+      {"title": "Marketing Psychology", "command": "Apply persuasion principles to $EVEREST_TENANT messaging", "description": "Cialdini, loss aversion, social proof"}
+    ]},
+    {"name": "Everest · RevOps & Analytics", "icon": "bar-chart", "hints": [
+      {"title": "Sales Enablement", "command": "Build sales enablement kit for $EVEREST_TENANT", "description": "One-pagers, demo scripts, objections"},
+      {"title": "RevOps Stack", "command": "Design RevOps stack for $EVEREST_TENANT", "description": "CRM, attribution, lifecycle automation"},
+      {"title": "Analytics Tracking", "command": "Set up analytics and event tracking for $EVEREST_TENANT", "description": "Plan instrument, schemas, dashboards"},
+      {"title": "A/B Test", "command": "Design A/B test for $EVEREST_TENANT", "description": "Hypothesis, variant, metric, sample size"}
+    ]},
+    {"name": "Everest · Growth Programs", "icon": "users", "hints": [
+      {"title": "Referral Program", "command": "Design referral program for $EVEREST_TENANT", "description": "Reward structure, tracking, ToS"}
+    ]}
+  ]
+}

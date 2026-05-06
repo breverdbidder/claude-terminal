@@ -27,6 +27,15 @@ pub struct Hint {
 }
 
 pub fn get_default_hints() -> Vec<HintCategory> {
+    let mut categories = upstream_default_hints();
+    match crate::everest_hints::load_everest_categories() {
+        Ok(everest) => categories.extend(everest),
+        Err(e) => eprintln!("[everest_hints] WARN: {}", e),
+    }
+    categories
+}
+
+fn upstream_default_hints() -> Vec<HintCategory> {
     vec![
         HintCategory {
             name: "Top 10 Commands".to_string(),
