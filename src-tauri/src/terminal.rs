@@ -168,10 +168,15 @@ impl TerminalManager {
         }
 
         // Spawn the command
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
+        crate::telegram_hook::watch_child_exit(
+            child,
+            id.clone(),
+            nickname.clone().unwrap_or_else(|| label.clone()),
+        );
         let config = TerminalConfig {
             id: id.clone(),
             label,
@@ -310,10 +315,15 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn npm run {}: {}", script_name, e))?;
 
         let id = Uuid::new_v4().to_string();
+        crate::telegram_hook::watch_child_exit(
+            child,
+            id.clone(),
+            format!("npm run {}", script_name),
+        );
         let config = TerminalConfig {
             id: id.clone(),
             label,
@@ -418,10 +428,15 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
+        crate::telegram_hook::watch_child_exit(
+            child,
+            id.clone(),
+            format!("shell ({})", label),
+        );
         let config = TerminalConfig {
             id: id.clone(),
             label,

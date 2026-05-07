@@ -7,6 +7,7 @@ mod database;
 mod telemetry;
 mod everest_seed;
 mod everest_hints;
+mod telegram_hook;
 
 use tauri::Manager;
 use std::sync::Arc;

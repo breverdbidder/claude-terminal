@@ -13,82 +13,94 @@ This repository is a fork of [`talayash/claude-terminal`](https://github.com/tal
 - **Verdict:** ADOPT
 - **Score:** 86 / 100 (threshold ≥75)
 - **License:** MIT (confidence 1.00 — raw LICENSE file verified verbatim)
-- **Method:** parallel GitHub-API REPOEVAL via `pg_net` + vault-stored PAT
 - **Reference:** `extrep_evaluations.id = 97a77546-e1dd-4a2a-8d36-80564859e180` in Everest Supabase
 
 ## Changes since fork
-1. **Disabled upstream auto-update** in `src-tauri/tauri.conf.json` (commit `95e8d12a`).
+1. **Disabled upstream auto-update** (commit `95e8d12a`).
 2. **Added BASELINE.md** (commit `95e8d12a`).
 3. **Wired profile system to `everest_tenants` SSOT** (commit `5034f136`).
-4. **Wired hints panel to skill catalog** (commit `9ebb7240`): 7 categories, 29 hints, 1:1 coverage of `everest_tenants.skill_allowlist`.
-5. **Added CI release pipeline** (this commit): `.github/workflows/release-windows.yml` — auto-builds Windows installer on every `v*` tag push or manual dispatch.
+4. **Wired hints panel to skill catalog** (commit `9ebb7240`).
+5. **Added CI release pipeline** (commit `ed515e9b`).
+6. **Removed upstream's incompatible `release.yml`** (commit `75420bd3`).
+7. **Telegram exit-code hook** (this commit): `src-tauri/src/telegram_hook.rs` watches every spawned child process and notifies on abnormal exit.
 
 ## Adoption plan (status as of 2026-05-07)
-- [x] Fork to `breverdbidder/claude-terminal` (HTTP 202)
+- [x] Fork to `breverdbidder/claude-terminal`
 - [x] Pin baseline at upstream `cd0d62cc...`
 - [x] Disable upstream auto-update endpoint
-- [x] Wire profile system → `everest_tenants` SSOT (8 default profiles seeded)
+- [x] Wire profile system → `everest_tenants` SSOT (8 default profiles)
 - [x] Wire hints panel → skill catalog (7 categories, 29 hints)
-- [x] CI release workflow (this commit; first tag `v1.20.7-everest.1` pushed alongside)
-- [ ] Add Telegram exit-code hook (`src-tauri/src/terminal.rs` on_exit handler — BidDeedAI_bot, chat_id 740118343)
-- [ ] Re-tag as `everest-cct-1.20.7` once Telegram hook merges (in the meantime, intermediate releases are tagged `v1.20.7-everest.{1,2,…}`)
+- [x] CI release workflow + first tag `v1.20.7-everest.1` pushed
+- [x] Telegram exit-code hook (this commit; will appear in `v1.20.7-everest.2` build)
+- [ ] Re-tag as `everest-cct-1.20.7` once all integration changes are battle-tested
+
+## Telegram exit-code notifications
+The fork ships a per-child exit watcher at `src-tauri/src/telegram_hook.rs`. For every PTY-spawned process (Claude Code session, npm script, raw shell), it spawns a tokio background task that waits on `child.wait()` and sends a Telegram message when the process exits with a code other than:
+- `0`   — clean exit
+- `130` — SIGINT (Ctrl+C)
+- `143` — SIGTERM (user closed the terminal cell)
+
+These three codes are filtered to avoid notification spam from normal use.
+
+### Setup (one time, on each machine running ClaudeTerminal)
+The hook reads two env vars **at notification time** (not at startup, so changes take effect on the next abnormal exit):
+
+```powershell
+# Required: bot API token
+[Environment]::SetEnvironmentVariable("TELEGRAM_BOT_TOKEN", "<your_bot_token>", "User")
+
+# Optional: chat ID (defaults to 740118343 = BidDeedAI_bot DM with Ariel)
+[Environment]::SetEnvironmentVariable("TELEGRAM_CHAT_ID", "740118343", "User")
+```
+
+Restart ClaudeTerminal after setting these. If `TELEGRAM_BOT_TOKEN` is unset or empty, the hook silently no-ops — no errors, no spam.
+
+### Notification payload
+Each notification includes:
+- Description (terminal nickname → label → "shell (<label>)" → "npm run <script>")
+- Short terminal ID (first 8 chars of UUID)
+- Exit code
+- Host (COMPUTERNAME on Windows, HOSTNAME on Linux/macOS)
+
+### Implementation notes
+- **Non-blocking**: terminal creation never waits for the watcher. The watcher is spawned via `Handle::try_current().spawn(...)` and is fire-and-forget.
+- **No new deps**: uses existing `reqwest` (already in Cargo.toml) and `tokio` (already required by Tauri 2).
+- **No runtime panics**: if `tokio::runtime::Handle::try_current()` returns Err (no tokio context), the watcher logs to stderr and returns — does NOT panic.
+- **5-second timeout** on the Telegram POST; failures log to stderr and are otherwise ignored.
 
 ## CI release pipeline
-The fork ships a GitHub Actions workflow at `.github/workflows/release-windows.yml` that:
-- **Triggers** on push of any `v*` tag, or manual dispatch from the Actions tab with a tag-name input
-- **Runs** on `windows-latest`, installs Node 20 + Rust stable, caches deps via `Swatinem/rust-cache`
-- **Builds** via `tauri-apps/tauri-action@v0`, which runs `npm ci && npm run tauri build` and uploads the resulting `.exe` (NSIS) and `.msi` artifacts as a GitHub Release
-- **Typical wall time:** 15–25 minutes per build (cold cache slower; warm cache much faster)
-- **Installer signing:** unsigned. Windows SmartScreen will warn "Unknown publisher" — click *More info* → *Run anyway*. (Code signing requires a real cert; not in scope for this fork.)
-- **Updater manifest (`latest.json`):** explicitly NOT generated (`includeUpdaterJson: false`), since the in-app updater was disabled in step 3.
+`.github/workflows/release-windows.yml` builds and releases the Windows installer on every `v*` tag push. See commit `ed515e9b` for details. Releases land at https://github.com/breverdbidder/claude-terminal/releases.
 
-To cut a new release:
+To release a build with this commit's Telegram hook included:
 ```powershell
 git tag v1.20.7-everest.2
 git push origin v1.20.7-everest.2
 ```
-Or use the **Run workflow** button on the Actions tab with a custom tag name.
-
-The Releases tab at https://github.com/breverdbidder/claude-terminal/releases will list every successful build with one-click download links.
 
 ## Refreshing the tenant seed
-The seed in `seeds/everest-tenants.json` is a snapshot of the Supabase SSOT taken at `_meta.generated_at`. To refresh: connect to project `mocerqjnksmhcjzxrewo`, re-run the export (SQL is in commit `5034f136`), replace `seeds/everest-tenants.json`, push to master with a new tag → CI rebuilds the installer.
+Snapshot of `everest_tenants` in `seeds/everest-tenants.json`. To refresh: re-run the export SQL (in commit `5034f136`), replace the file, push a new tag.
 
 ## Refreshing the hint seed
-The seed in `seeds/everest-hints.json` is hand-curated. There is **no dedicated `everest_skills` table** in Supabase; the canonical slug list is the union of `public.everest_tenants.skill_allowlist`. To refresh:
-1. `SELECT DISTINCT unnest(skill_allowlist) FROM public.everest_tenants ORDER BY 1;`
-2. Compare against the `categories[].hints[].title` set in `seeds/everest-hints.json`.
-3. Update `_meta.generated_at`.
-4. Push with a new tag → CI rebuilds.
+Hand-curated `seeds/everest-hints.json` with 29 hints across 7 categories matching `everest_tenants.skill_allowlist`. There is no dedicated `everest_skills` table.
 
 ## What gets seeded (profiles)
-The eight tenant profiles match `public.everest_tenants` rows by slug:
-`everest-capital`, `biddeed`, `zonewise`, `brevard-doors`, `property360`, `kenstrekt`, `protection-partners`, `everest-portfolio`.
-
-Each profile carries:
-- `working_directory` defaulting to `%USERPROFILE%\Code\<slug>` (user-editable)
-- `claude_args: ["--model", "opus"]`
-- `env_vars`: `EVEREST_TENANT`, `EVEREST_BUSINESS_KIND`, `EVEREST_DOMAIN`, `EVEREST_STAGE`, `EVEREST_PAIRING_RULE`
+8 tenant profiles: everest-capital, biddeed, zonewise, brevard-doors, property360, kenstrekt, protection-partners, everest-portfolio. Each carries `working_directory`, `claude_args`, and `env_vars` (`EVEREST_TENANT`, `EVEREST_BUSINESS_KIND`, `EVEREST_DOMAIN`, `EVEREST_STAGE`, `EVEREST_PAIRING_RULE`).
 
 ## What gets exposed (hints)
-The 29 hints are grouped into 7 Everest categories, appended after the upstream defaults:
-- **Everest · SEO** (5): programmatic-seo, seo-audit, ai-seo, schema-markup, site-architecture
-- **Everest · Conversion** (7): page-cro, form-cro, popup-cro, paywall-upgrade-cro, signup-flow-cro, lead-magnets, free-tool-strategy
-- **Everest · Copy & Content** (4): copywriting, copy-editing, content-strategy, social-content
-- **Everest · Outbound** (3): cold-email, email-sequence, paid-ads
-- **Everest · Strategy & Research** (5): launch-strategy, customer-research, competitor-alternatives, pricing-strategy, marketing-psychology
-- **Everest · RevOps & Analytics** (4): sales-enablement, revops, analytics-tracking, ab-test-setup
-- **Everest · Growth Programs** (1): referral-program
+29 hints in 7 Everest categories (SEO 5, Conversion 7, Copy 4, Outbound 3, Strategy 5, RevOps 4, Growth 1), appended after the upstream defaults in F1 panel.
 
 ## Update strategy (upstream)
-This fork tracks upstream **manually**. To pull a newer upstream release: inspect new commits on `talayash/claude-terminal` master, cherry-pick or merge into a feature branch off this fork's master, re-run REPOEVAL on the new HEAD before merging, update this `BASELINE.md`, then push a new tag to trigger CI.
+Manual: cherry-pick or merge from upstream master into a feature branch, re-run REPOEVAL, update BASELINE.md, push a new tag.
 
 ## Honesty tags (this revision)
-- VERIFIED: Workflow YAML committed at `.github/workflows/release-windows.yml`.
-- VERIFIED: Tag `v1.20.7-everest.1` pushed pointing at this commit (will be visible in this commit's response).
-- INFERRED: Build will succeed because `tauri-apps/tauri-action@v0` is the canonical Tauri CI action and the project's existing `npm run tauri build` script works locally per upstream's release history.
-- UNTESTED: First CI build itself — its result will appear in the Actions tab in 15–25 minutes after this commit + tag land.
+- VERIFIED: All 3 spawn sites in `terminal.rs` rewired (`_child` → `child`); `watch_child_exit` called immediately after `let id = ...`. 0 leftover `_child` bindings.
+- VERIFIED: `mod telegram_hook;` declared in `main.rs` after `mod everest_hints;`.
+- VERIFIED: No Cargo.toml change required — `reqwest` (with rustls-tls + json) and `tokio` (with full features) already present.
+- INFERRED: `tokio::runtime::Handle::try_current()` returns Ok inside Tauri command handlers because Tauri runs commands on its tokio runtime; `Err` path is defensive for any caller outside that context.
+- INFERRED: Filtering exit codes 0/130/143 covers the common user-driven exits without missing genuine crashes (signal-killed processes report 128+signal; SIGSEGV=139, SIGABRT=134, OOM-kill=137 will all notify).
+- UNTESTED: Build of this commit (will appear when `v1.20.7-everest.2` tag is pushed).
+- UNTESTED: An actual non-zero exit triggering an actual Telegram message (requires running build with the env vars set).
 
 ## Contact
 **Owner:** Everest Capital USA / Ariel Shapira
-**Origin context:** postmortem session 2026-05-06/07 (summit_chat_dispatch dispatcher recovery + parallel REPOEVAL + adoption plan steps 1–5 + CI release pipeline)
+**Origin context:** postmortem session 2026-05-06/07 (summit_chat_dispatch dispatcher recovery + parallel REPOEVAL + adoption plan steps 1-5 + CI release pipeline + Telegram exit hook)
