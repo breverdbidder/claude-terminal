@@ -1,0 +1,64 @@
+name: Build Windows Installer (Everest)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name to release (e.g. v1.20.7-everest.2)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build + release on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build + create GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag_name || github.ref_name }}
+          releaseName: 'ClaudeTerminal Everest ${{ github.event.inputs.tag_name || github.ref_name }}'
+          releaseBody: |
+            **Everest Capital fork** — auto-built from master via GitHub Actions.
+
+            Includes Everest customizations:
+            - Step 3: upstream auto-update disabled (this build will not silently roll forward)
+            - Step 4: 8 tenant profiles seeded on first launch (everest-capital, biddeed, zonewise, brevard-doors, property360, kenstrekt, protection-partners, everest-portfolio)
+            - Step 5: 29 Everest skill hints across 7 categories in F1 panel
+
+            Pinned upstream: talayash/claude-terminal@cd0d62cc (v1.20.7).
+
+            See [BASELINE.md](https://github.com/breverdbidder/claude-terminal/blob/master/BASELINE.md) for full lineage and adoption plan.
+
+            **Note:** unsigned installer. Windows SmartScreen will show "Unknown publisher" — click "More info" then "Run anyway".
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false

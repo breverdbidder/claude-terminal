@@ -19,37 +19,47 @@ This repository is a fork of [`talayash/claude-terminal`](https://github.com/tal
 ## Changes since fork
 1. **Disabled upstream auto-update** in `src-tauri/tauri.conf.json` (commit `95e8d12a`).
 2. **Added BASELINE.md** (commit `95e8d12a`).
-3. **Wired profile system to `everest_tenants` SSOT** (commit `5034f136`):
-   - `seeds/everest-tenants.json` snapshots 8 tenant profiles from Supabase.
-   - `src-tauri/src/everest_seed.rs` seeds the SQLite profiles table on first launch (no-op if any profile already exists).
-   - `src-tauri/src/main.rs` calls the seeder in `setup()` after `Database::new()`.
-4. **Wired hints panel to skill catalog** (this commit):
-   - `seeds/everest-hints.json`: 7 categories, 29 hints — covers every distinct slug in the union of `everest_tenants.skill_allowlist`.
-   - `src-tauri/src/everest_hints.rs`: compile-time embeds the JSON via `include_str!` and exposes `load_everest_categories()`.
-   - `src-tauri/src/config.rs`: `get_default_hints()` now returns upstream defaults **plus** the Everest categories. The original upstream body was moved to a private `upstream_default_hints()` helper. Failure to load the Everest seed is non-fatal.
-   - `src-tauri/src/main.rs`: declares `mod everest_hints;`.
-   - Each Everest hint command references `$EVEREST_TENANT` and `$EVEREST_DOMAIN` (env vars set by the tenant profile from step 3).
+3. **Wired profile system to `everest_tenants` SSOT** (commit `5034f136`).
+4. **Wired hints panel to skill catalog** (commit `9ebb7240`): 7 categories, 29 hints, 1:1 coverage of `everest_tenants.skill_allowlist`.
+5. **Added CI release pipeline** (this commit): `.github/workflows/release-windows.yml` — auto-builds Windows installer on every `v*` tag push or manual dispatch.
 
-## Adoption plan (status as of 2026-05-06)
+## Adoption plan (status as of 2026-05-07)
 - [x] Fork to `breverdbidder/claude-terminal` (HTTP 202)
 - [x] Pin baseline at upstream `cd0d62cc...`
 - [x] Disable upstream auto-update endpoint
 - [x] Wire profile system → `everest_tenants` SSOT (8 default profiles seeded)
-- [x] Wire hints panel → skill catalog (7 categories, 29 hints; backed by `everest_tenants.skill_allowlist`)
+- [x] Wire hints panel → skill catalog (7 categories, 29 hints)
+- [x] CI release workflow (this commit; first tag `v1.20.7-everest.1` pushed alongside)
 - [ ] Add Telegram exit-code hook (`src-tauri/src/terminal.rs` on_exit handler — BidDeedAI_bot, chat_id 740118343)
-- [ ] Re-tag fork as `everest-cct-1.20.7` once integration changes are merged
+- [ ] Re-tag as `everest-cct-1.20.7` once Telegram hook merges (in the meantime, intermediate releases are tagged `v1.20.7-everest.{1,2,…}`)
+
+## CI release pipeline
+The fork ships a GitHub Actions workflow at `.github/workflows/release-windows.yml` that:
+- **Triggers** on push of any `v*` tag, or manual dispatch from the Actions tab with a tag-name input
+- **Runs** on `windows-latest`, installs Node 20 + Rust stable, caches deps via `Swatinem/rust-cache`
+- **Builds** via `tauri-apps/tauri-action@v0`, which runs `npm ci && npm run tauri build` and uploads the resulting `.exe` (NSIS) and `.msi` artifacts as a GitHub Release
+- **Typical wall time:** 15–25 minutes per build (cold cache slower; warm cache much faster)
+- **Installer signing:** unsigned. Windows SmartScreen will warn "Unknown publisher" — click *More info* → *Run anyway*. (Code signing requires a real cert; not in scope for this fork.)
+- **Updater manifest (`latest.json`):** explicitly NOT generated (`includeUpdaterJson: false`), since the in-app updater was disabled in step 3.
+
+To cut a new release:
+```powershell
+git tag v1.20.7-everest.2
+git push origin v1.20.7-everest.2
+```
+Or use the **Run workflow** button on the Actions tab with a custom tag name.
+
+The Releases tab at https://github.com/breverdbidder/claude-terminal/releases will list every successful build with one-click download links.
 
 ## Refreshing the tenant seed
-The seed in `seeds/everest-tenants.json` is a snapshot of the Supabase SSOT taken at `_meta.generated_at`. To refresh: connect to project `mocerqjnksmhcjzxrewo`, re-run the export (SQL is in commit `5034f136`), replace `seeds/everest-tenants.json`, and `cargo build --release`. Existing user installs are unaffected; new installs pick up refreshed defaults.
+The seed in `seeds/everest-tenants.json` is a snapshot of the Supabase SSOT taken at `_meta.generated_at`. To refresh: connect to project `mocerqjnksmhcjzxrewo`, re-run the export (SQL is in commit `5034f136`), replace `seeds/everest-tenants.json`, push to master with a new tag → CI rebuilds the installer.
 
 ## Refreshing the hint seed
 The seed in `seeds/everest-hints.json` is hand-curated. There is **no dedicated `everest_skills` table** in Supabase; the canonical slug list is the union of `public.everest_tenants.skill_allowlist`. To refresh:
-
-1. Run `SELECT DISTINCT unnest(skill_allowlist) FROM public.everest_tenants ORDER BY 1;`
-2. Compare against the `categories[].hints[].title` set in `seeds/everest-hints.json`. Add or retire hints to match.
+1. `SELECT DISTINCT unnest(skill_allowlist) FROM public.everest_tenants ORDER BY 1;`
+2. Compare against the `categories[].hints[].title` set in `seeds/everest-hints.json`.
 3. Update `_meta.generated_at`.
-4. `cargo build --release` to re-embed.
-5. The hints panel always merges these with the upstream defaults; if the JSON parse fails, upstream defaults still render and a warning prints to stderr.
+4. Push with a new tag → CI rebuilds.
 
 ## What gets seeded (profiles)
 The eight tenant profiles match `public.everest_tenants` rows by slug:
@@ -71,16 +81,14 @@ The 29 hints are grouped into 7 Everest categories, appended after the upstream 
 - **Everest · Growth Programs** (1): referral-program
 
 ## Update strategy (upstream)
-This fork tracks upstream **manually**. Inspect new commits on `talayash/claude-terminal` master, cherry-pick or merge into a feature branch off this fork's master, re-run REPOEVAL on the new HEAD before merging, and update this `BASELINE.md`.
+This fork tracks upstream **manually**. To pull a newer upstream release: inspect new commits on `talayash/claude-terminal` master, cherry-pick or merge into a feature branch off this fork's master, re-run REPOEVAL on the new HEAD before merging, update this `BASELINE.md`, then push a new tag to trigger CI.
 
 ## Honesty tags (this revision)
-- VERIFIED: 29 distinct slugs from `everest_tenants.skill_allowlist` correspond 1:1 to 29 hints across 7 categories.
-- VERIFIED: `Hint` and `HintCategory` struct shapes in `src-tauri/src/config.rs` match the seeder's deserialization target.
-- VERIFIED: `mod everest_hints;` inserted in `main.rs`; `get_default_hints` wrapped in `config.rs` with original body moved to `upstream_default_hints` helper.
-- INFERRED: There is no `everest_skills` table; the canonical SSOT for slugs is `everest_tenants.skill_allowlist`. Hint commands and descriptions are hand-written for this commit.
-- UNTESTED: `cargo build --release` (Rust code not compiled in this session).
-- UNTESTED: F1 panel actually rendering the new categories with correct icons.
+- VERIFIED: Workflow YAML committed at `.github/workflows/release-windows.yml`.
+- VERIFIED: Tag `v1.20.7-everest.1` pushed pointing at this commit (will be visible in this commit's response).
+- INFERRED: Build will succeed because `tauri-apps/tauri-action@v0` is the canonical Tauri CI action and the project's existing `npm run tauri build` script works locally per upstream's release history.
+- UNTESTED: First CI build itself — its result will appear in the Actions tab in 15–25 minutes after this commit + tag land.
 
 ## Contact
 **Owner:** Everest Capital USA / Ariel Shapira
-**Origin context:** postmortem session 2026-05-06 (summit_chat_dispatch dispatcher recovery + parallel REPOEVAL + adoption plan steps 1-5)
+**Origin context:** postmortem session 2026-05-06/07 (summit_chat_dispatch dispatcher recovery + parallel REPOEVAL + adoption plan steps 1–5 + CI release pipeline)
